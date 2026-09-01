@@ -1,0 +1,28 @@
+# Local config — candidates copy settings.example.toml and add their own keys
+config/settings.toml
+.env
+*.key
+
+# Data — never commit source extracts or derived layers
+data/
+*.parquet
+*.pbf
+*.zip
+*.duckdb
+*.sqlite
+bronze/
+silver/
+gold/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

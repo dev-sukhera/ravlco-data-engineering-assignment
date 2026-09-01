@@ -1,0 +1,57 @@
+# Verified live 2026-09-01. If an endpoint has moved, say so in DATA_QUALITY.md
+# rather than silently working around it.
+
+[montgomery]
+base            = "https://data.montgomerycountymd.gov/resource"
+incidents       = "bhju-22kf"   # ~124,770 rows, one row per crash
+drivers         = "mmzv-x632"   # ~219,644 rows, one row per driver
+non_motorists   = "n7fk-dce5"   # ~7,498 rows
+bulk_csv        = "https://data.montgomerycountymd.gov/api/views/{id}/rows.csv?accessType=DOWNLOAD"
+app_token       = ""            # optional; lifts anonymous throttling
+
+[txdot]
+# NOTE: this layer is named "Bicyclist Involved Crashes" but where=1=1 returns
+# ~3,088,450 rows against ~14,535 with bicyclist_involved_fl=1.
+# Its service description string is txdot_ph_2.automated_sw.cris_crash.
+# Read Part 1b of the assignment before you decide how to treat this.
+feature_server  = "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/TXDOT_Statewide_Bicyclist_Involved_Crashes/FeatureServer/0"
+max_record_count = 2000
+
+[fars]
+bulk_pattern    = "https://static.nhtsa.gov/nhtsa/downloads/FARS/{year}/National/FARS{year}NationalCSV.zip"
+api_base        = "https://crashviewer.nhtsa.dot.gov/CrashAPI"
+years           = [2019, 2020, 2021, 2022, 2023, 2024]
+# Sentinel coordinates: 77.7777 / 88.8888 / 99.9999. Not nulls.
+
+[crss]
+# Probability sample. Carries WEIGHT and PSU/stratum design variables.
+# CANNOT produce state-level estimates. Do not UNION with the above.
+bulk_pattern    = "https://static.nhtsa.gov/nhtsa/downloads/CRSS/{year}/CRSS{year}CSV.zip"
+
+[census]
+tiger_base      = "https://www2.census.gov/geo/tiger/TIGER2025"
+geocoder        = "https://geocoding.geo.census.gov/geocoder/geographies"
+acs5            = "https://api.census.gov/data/2023/acs/acs5"
+api_key         = ""            # REQUIRED as of 2026 — https://api.census.gov/data/key_signup.html
+state_fips      = { MD = "24", TX = "48", FL = "12" }
+
+[osm]
+geofabrik       = "https://download.geofabrik.de/north-america/us/{state}-latest.osm.pbf"
+overpass        = "https://overpass-api.de/api/interpreter"   # small ad-hoc queries ONLY
+
+[weather]
+open_meteo      = "https://archive-api.open-meteo.com/v1/archive"   # ERA5 reanalysis, ~9-25km grid
+ghcnh           = "https://www.ncei.noaa.gov/oa/global-historical-climatology-network/index.html#hourly/"
+
+[routing]
+valhalla        = "https://valhalla1.openstreetmap.de/isochrone"    # fair use; send X-Client-Id
+
+[crs]
+storage         = 4326
+tristate        = 5070    # NAD83 / CONUS Albers — equal area
+maryland        = 26985
+texas_central   = 32139
+texas_albers    = 3083
+florida_east    = 26958
+florida_albers  = 3086
+# 3857 is for tiles. Never for distance, buffer, or area.

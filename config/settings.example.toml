@@ -1,0 +1,9 @@
+# Copy to config/settings.toml and fill in. settings.toml is gitignored.
+
+[keys]
+census_api_key    = ""   # required — https://api.census.gov/data/key_signup.html
+socrata_app_token = ""   # optional — lifts anonymous throttling
+
+[run]
+default_start_date = "2024-01-01"
+output_dir         = "data"
