@@ -124,6 +124,7 @@ def build_silver(
     store: WatermarkStore | None = None,
     allow_unmapped: bool = False,
     validate: bool = True,
+    small_corpus: bool = False,
     threads: int | None = None,
 ) -> dict[str, Any]:
     """Build every silver table for `sources`. Returns the manifest payload."""
@@ -181,7 +182,7 @@ def build_silver(
                  ["crash_uid"], silver / f"{unified.TABLE}.parquet"))
 
     if validate:
-        _validate(ctx, plan, sources)
+        _validate(ctx, plan, sources, small_corpus=small_corpus)
 
     for source, table, relation, cols, order_by, dest in plan:
         info = c.write_parquet(con, relation, dest, columns=cols, order_by=order_by)
@@ -198,7 +199,7 @@ def build_silver(
     }
 
 
-def _validate(ctx: c.BuildContext, plan, sources) -> None:
+def _validate(ctx: c.BuildContext, plan, sources, *, small_corpus: bool = False) -> None:
     """Every table against contracts/silver.schema.json, before anything is written."""
     contract = contracts.load_contract(contracts.SILVER_CONTRACT)
     resolve = {
@@ -222,8 +223,15 @@ def _validate(ctx: c.BuildContext, plan, sources) -> None:
         ctx.con.execute(
             f"CREATE OR REPLACE VIEW {projected} AS SELECT {col_sql} FROM {relation}"
         )
+        # A history table is not unique on the contract's grain -- that is what
+        # SCD2 means -- so it is validated on the total order it is written in
+        # instead. Same assertion from two directions: write_parquet() refuses a
+        # non-total order and the contract refuses a non-unique key.
+        is_history = table.endswith("_history")
         violations += contracts.validate_relation(
-            ctx.con, projected, contract, contract_table
+            ctx.con, projected, contract, contract_table,
+            unique_keys=[_order] if is_history else None,
+            check_row_count_min=not small_corpus,
         )
         if table.endswith("_current") or not source:
             violations += contracts.validate_foreign_keys(
@@ -245,6 +253,10 @@ def _cli(argv: list[str] | None = None) -> int:
                     help="write unmapped dictionary values instead of failing")
     ap.add_argument("--no-validate", action="store_true",
                     help="skip contract validation (for debugging a new table)")
+    ap.add_argument("--small-corpus", action="store_true",
+                    help="skip the contract's row_count_min floor -- for builds "
+                         "over the committed test extracts rather than a full "
+                         "bronze corpus")
     ap.add_argument("--threads", type=int, default=None)
     ap.add_argument("--no-watermark-store", action="store_true",
                     help="ignore the bronze watermark store; discover partitions "
@@ -274,6 +286,7 @@ def _cli(argv: list[str] | None = None) -> int:
         store=store,
         allow_unmapped=args.allow_unmapped,
         validate=not args.no_validate,
+        small_corpus=args.small_corpus,
         threads=args.threads,
     )
 

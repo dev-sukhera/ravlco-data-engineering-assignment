@@ -1,0 +1,47 @@
+{
+  "generated_by": "python -m tests.fixtures.make_extracts",
+  "source_bronze": "/Users/dev/Documents/ravlco-data-engineering-assignment/data/bronze",
+  "partitions": {
+    "montgomery": [
+      "20260101T000000000Z",
+      "20260102T000000000Z"
+    ],
+    "txdot": [
+      "20260101T000000000Z",
+      "20260102T000000000Z"
+    ],
+    "fars": {
+      "2019": [
+        "20260101T000000000Z",
+        "20260102T000000000Z"
+      ],
+      "2024": [
+        "20260101T000000000Z"
+      ]
+    }
+  },
+  "synthetic": {
+    "txdot_amended_crash_id": "17490094",
+    "fars_2019_revised_st_case": "100001",
+    "fars_2019_removed_st_case": "100002"
+  },
+  "row_counts": {
+    "montgomery/bhju-22kf/20260101T000000000Z": 139,
+    "montgomery/bhju-22kf/20260102T000000000Z": 361,
+    "montgomery/mmzv-x632/20260101T000000000Z": 215,
+    "montgomery/mmzv-x632/20260102T000000000Z": 675,
+    "montgomery/n7fk-dce5/20260101T000000000Z": 11,
+    "montgomery/n7fk-dce5/20260102T000000000Z": 29,
+    "txdot/cris_crash/20260101T000000000Z": 157,
+    "txdot/cris_crash/20260102T000000000Z": 157,
+    "fars/2019/20260101T000000000Z/accident": 105,
+    "fars/2019/20260101T000000000Z/vehicle": 148,
+    "fars/2019/20260101T000000000Z/person": 230,
+    "fars/2024/20260101T000000000Z/accident": 105,
+    "fars/2024/20260101T000000000Z/vehicle": 148,
+    "fars/2024/20260101T000000000Z/person": 236,
+    "fars/2019/20260102T000000000Z/accident": 104,
+    "fars/2019/20260102T000000000Z/vehicle": 147,
+    "fars/2019/20260102T000000000Z/person": 228
+  }
+}

@@ -141,12 +141,25 @@ def validate_relation(
     table: str,
     *,
     key_columns: Sequence[str] | None = None,
+    unique_keys: Sequence[Sequence[str]] | None = None,
+    check_row_count_min: bool = True,
     max_examples: int = 3,
 ) -> list[Violation]:
     """Check one DuckDB relation against one table's contract entry.
 
     Returns every violation found; raising is the caller's decision so that a
     report tool can print them and a build can refuse on them.
+
+    `unique_keys` overrides the contract's. The contract's key is the grain of
+    the CURRENT slice; a history table is deliberately not unique on it -- that
+    is what SCD2 means -- so the build passes (natural_key, valid_from,
+    _bronze_load_ts) there, which is also the total order the parquet is written
+    in. The two are the same assertion: the writer refuses a non-total order and
+    the contract refuses a non-unique key.
+
+    `check_row_count_min` is off for fixture-scale builds. The floor is a
+    production-corpus assertion -- it catches a truncated or empty build -- and
+    a few hundred committed test rows are not evidence of one.
     """
     spec = table_contract(contract, table)
     props: dict[str, Any] = spec.get("properties", {})
@@ -156,7 +169,13 @@ def validate_relation(
 
     described = con.execute(f"DESCRIBE SELECT * FROM {relation}").fetchall()
     actual = {row[0]: row[1] for row in described}
-    key_columns = list(key_columns or constraints.get("unique_keys", [[]])[0] or [])
+    # Example values for a violation are pulled from the table's key, so a
+    # failure names the offending rows. A table with no declared key (bronze,
+    # where a multi-partition read is legitimately not unique on anything)
+    # simply reports counts.
+    declared = constraints.get("unique_keys") or []
+    key_columns = list(key_columns if key_columns is not None
+                       else (declared[0] if declared else []))
 
     # -- presence -------------------------------------------------------
     missing = [col for col in props if col not in actual]
@@ -196,6 +215,11 @@ def validate_relation(
                     Violation(table, "type",
                               f"{col}: contract {concrete}, relation {actual[col]}")
                 )
+                # Do not also range- or enum-check a column of the wrong type.
+                # `WHERE varchar_col >= 0` is not a failing check, it is a
+                # BinderException -- and the type violation already says
+                # everything there is to say about the column.
+                continue
 
         if col in required and not nullable:
             checks.append(("null", f"{col} must not be null", f"{q} IS NOT NULL"))
@@ -226,7 +250,8 @@ def validate_relation(
         )
 
     # -- unique keys ----------------------------------------------------
-    for key in constraints.get("unique_keys", []):
+    for key in (unique_keys if unique_keys is not None
+                else constraints.get("unique_keys", [])):
         if not key or any(k not in actual for k in key):
             continue
         cols = ", ".join(_quote(k) for k in key)
@@ -245,7 +270,7 @@ def validate_relation(
             )
 
     # -- row count floor -------------------------------------------------
-    minimum = constraints.get("row_count_min")
+    minimum = constraints.get("row_count_min") if check_row_count_min else None
     if minimum is not None:
         n = con.execute(f"SELECT COUNT(*) FROM {relation}").fetchone()[0]
         if n < minimum:
@@ -289,11 +314,15 @@ def validate_foreign_keys(
             f"p.{_quote(pc)} = ch.{_quote(cc)}"
             for cc, pc in zip(child_cols, parent_cols)
         )
+        # `orphans_allowed_when` names a boolean column on the CHILD that is
+        # TRUE exactly where a missing parent is legitimate and measured. Those
+        # rows are excluded from the check; every other row must have a parent.
+        # A NULL in that column is not a licence -- coalesce to false, so
+        # "unknown" fails closed.
         guard = ""
         allowed = fk.get("orphans_allowed_when")
         if allowed:
-            guard = f" AND NOT ch.{_quote(allowed)}" if allowed.startswith("not_") \
-                else f" AND ch.{_quote(allowed)}"
+            guard = f" AND NOT coalesce(ch.{_quote(allowed)}, false)"
         where_parent = fk["references"].get("where", "TRUE")
         where_child = fk.get("where", "TRUE")
         sql = (
@@ -359,12 +388,15 @@ def validate(
     contract_path: str | Path = SILVER_CONTRACT,
     resolve: dict[str, str] | None = None,
     key_columns: Sequence[str] | None = None,
+    unique_keys: Sequence[Sequence[str]] | None = None,
+    check_row_count_min: bool = True,
     raise_on_violation: bool = True,
 ) -> list[Violation]:
     """Validate one relation and, unless told otherwise, raise on any violation."""
     contract = load_contract(contract_path)
     violations = validate_relation(
-        con, relation, contract, table, key_columns=key_columns
+        con, relation, contract, table, key_columns=key_columns,
+        unique_keys=unique_keys, check_row_count_min=check_row_count_min,
     )
     if resolve:
         violations += validate_foreign_keys(con, contract, table, relation, resolve)

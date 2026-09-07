@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/contracts/silver.schema.json",
   "title": "Silver Layer Contract v1.0.0",
-  "description": "Typed, defect-handled, versioned per-source tables. Each entry under `tables` describes ONE ROW of that table. Same dialect as contracts/lead_output.schema.json.\n\nJSON Schema cannot express grain, referential expectations or a row-count floor, so each table also carries `x-table-constraints`:\n  unique_keys   the grain, enforced on the _current slice\n  foreign_keys  with optional orphans_allowed_when naming the boolean column that licenses a legitimately missing parent\n  row_count_min a floor, so an empty build fails loudly\n\nColumn ORDER is part of this contract (x-column-order-is-contract). Silver must be byte-identical across rebuilds, and the writer emits the contract's order; a reordered contract has to fail loudly rather than silently rewriting every file with new bytes and identical content.\n\nEnforced by src/contracts.py: types via DESCRIBE, everything else via generated SQL, all violations collected before raising. python -m src.transform.build validates every table BEFORE renaming any .part file into place -- a contract failure leaves the previous silver exactly as it was.",
+  "description": "Typed, defect-handled, versioned per-source tables. Each entry under `tables` describes ONE ROW of that table. Same dialect as contracts/lead_output.schema.json.\n\nJSON Schema cannot express grain, referential expectations or a row-count floor, so each table also carries `x-table-constraints`:\n  unique_keys   the grain, enforced on the _current slice\n  foreign_keys  with optional orphans_allowed_when naming the boolean column that licenses a legitimately missing parent\n  row_count_min a floor, so an empty build fails loudly\n\nColumn ORDER is part of this contract (x-column-order-is-contract). Silver must be byte-identical across rebuilds, and the writer emits the contract's order; a reordered contract has to fail loudly rather than silently rewriting every file with new bytes and identical content.\n\nEnforced by src/contracts.py: types via DESCRIBE, everything else via generated SQL, all violations collected before raising. python -m src.transform.build validates every table BEFORE renaming any .part file into place -- a contract failure leaves the previous silver exactly as it was.\n\n`unique_keys` is the grain of the CURRENT slice. A history table is deliberately not unique on it -- that is what SCD2 means -- and is validated instead on (natural_key, valid_from, _bronze_load_ts), which is also the total order its parquet is written in.\n\n`row_count_min` is a PRODUCTION-corpus floor: it exists so an empty or truncated build fails loudly. It is skipped for fixture-scale builds (build.py --small-corpus), because a few hundred committed test rows are not evidence that the pipeline is broken.",
   "tables": {
     "montgomery.crash": {
       "title": "Montgomery County crash (Incidents, bhju-22kf)",
@@ -2185,7 +2185,7 @@
     },
     "fars.codebook": {
       "title": "FARS code dictionary, extracted from the data",
-      "description": "Every <COL>NAME label column, as (table, column, code, label, first_year, last_year). NHTSA's own labels out of NHTSA's own files -- evidence for the severity crosswalk rather than a transcription of the manual. Columns with more than 300 distinct codes are excluded: they label continuous fields, not code dictionaries.",
+      "description": "Every <COL>NAME label column, as (table, column, code, label, first_year, last_year). NHTSA's own labels out of NHTSA's own files -- evidence for the severity crosswalk rather than a transcription of the manual. Columns with more than 300 distinct codes are excluded: they label continuous fields, not code dictionaries. The grain is (table, column, code, LABEL) rather than (table, column, code): a code whose label NHTSA changed between years appears twice, with disjoint first_year/last_year ranges. That is a drift signal worth keeping, and collapsing it would silently pick one of the two labels.",
       "type": "object",
       "additionalProperties": false,
       "x-column-order-is-contract": true,
@@ -2193,7 +2193,6 @@
         "tbl",
         "col",
         "code",
-        "label",
         "first_year",
         "last_year",
         "row_count"
@@ -2209,7 +2208,11 @@
           "type": "string"
         },
         "label": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "NHTSA's own label. NULL where a code appears with no label in any year -- that is information, not an error."
         },
         "first_year": {
           "type": "string"
