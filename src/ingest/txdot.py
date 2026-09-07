@@ -270,6 +270,11 @@ def sweep(
         log.info("new sweep %s over OIDs (%d, %d]", load_ts, floor, ceiling)
 
     bounded = max_pages is not None or oid_min is not None or oid_max is not None
+    if resuming:
+        # Sticky: a partition that was ever bounded is not a complete sweep of
+        # the universe, and resuming it under a different bound does not make
+        # it one. Silver must never mistake a slice for a census.
+        bounded = bool(cursor.get("bounded")) or bounded
     partition = bronze_partition(SOURCE, DATASET, load_ts)
 
     snapshot_oids_list: list[int] = []

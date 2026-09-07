@@ -69,6 +69,7 @@ import json
 import logging
 import sys
 import zipfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -228,6 +229,8 @@ def ingest_year(
     load_ts = partition.name
     zip_path = partition / staging.name
     durable_replace(staging, zip_path)
+    with suppress(OSError):
+        staging.parent.rmdir()  # empty once the download has moved into place
 
     store.record_artifact(
         SOURCE, dataset, load_ts, zip_path, kind="raw",
