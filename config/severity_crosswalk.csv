@@ -1,0 +1,30 @@
+source_system,source_column,source_value,kabco,severity_ordinal,notes
+MONTGOMERY_MD,injury_severity,FATAL INJURY,K,5,Old uppercase dictionary generation. Person-level (driver or non-motorist).
+MONTGOMERY_MD,injury_severity,Fatal Injury,K,5,New title-case dictionary generation. Same meaning as the uppercase spelling; the case change is the 2024 dictionary cutover and carries no semantics.
+MONTGOMERY_MD,injury_severity,SUSPECTED SERIOUS INJURY,A,4,Old generation.
+MONTGOMERY_MD,injury_severity,Suspected Serious Injury,A,4,New generation.
+MONTGOMERY_MD,injury_severity,SUSPECTED MINOR INJURY,B,3,Old generation.
+MONTGOMERY_MD,injury_severity,Suspected Minor Injury,B,3,New generation.
+MONTGOMERY_MD,injury_severity,POSSIBLE INJURY,C,2,Old generation.
+MONTGOMERY_MD,injury_severity,Possible Injury,C,2,New generation.
+MONTGOMERY_MD,injury_severity,NO APPARENT INJURY,O,1,Old generation.
+MONTGOMERY_MD,injury_severity,No Apparent Injury,O,1,New generation.
+MONTGOMERY_MD,injury_severity,__NULL__,,0,"LOSSY. 4,618 driver rows carry SQL NULL in injury_severity (2.1%). Montgomery publishes no ""injured, severity unknown"" code, so a null here is genuinely ""not reported"" and maps to 0. It must NOT be read as ""no injury"": that would silently move 4,618 unknowns into O and understate the injury rate."
+MONTGOMERY_MD,acrs_report_type,Fatal Crash,K,5,"Crash-level. Cross-check only -- the crash-level ordinal is the MAX over party rows, not this column. Reported disagreement count is in the build report."
+MONTGOMERY_MD,acrs_report_type,Injury Crash,,3,"Crash-level. LOSSY: collapses A/B/C into one bucket, so it cannot distinguish a serious injury from a possible one. Mapped to 3 only as a fallback for the 785 crashes with no party rows at all; ordinal 3 is the modal party severity for injury crashes that do have parties."
+MONTGOMERY_MD,acrs_report_type,Property Damage Crash,O,1,Crash-level. Fallback for party-less crashes only.
+TXDOT_CRIS,crash_sev_id,4,K,5,"CRASH-LEVEL, not person-level. Verified against death_cnt: all 997 rows with crash_sev_id=4 have death_cnt>0 and all 997 have crash_fatal_fl=1."
+TXDOT_CRIS,crash_sev_id,1,A,4,"Verified: all 4,119 rows have sus_serious_injry_cnt>0 and death_cnt=0."
+TXDOT_CRIS,crash_sev_id,2,B,3,"Verified: all 12,520 rows have nonincap_injry_cnt>0, sus_serious_injry_cnt=0, death_cnt=0. TxDOT's ""non-incapacitating"" is KABCO B."
+TXDOT_CRIS,crash_sev_id,3,C,2,"Verified: all 14,128 rows have poss_injry_cnt>0 and nonincap_injry_cnt=0."
+TXDOT_CRIS,crash_sev_id,5,O,1,"Verified: all 62,454 rows have non_injry_cnt>0 and every injury count 0. CRIS orders its own scale differently from KABCO -- 5 is the LEAST severe code here, not the most. Ordering by the raw id sorts the scale backwards."
+TXDOT_CRIS,crash_sev_id,0,,0,"Unknown. 5,410 of 5,781 rows carry unkn_injry_cnt>0; the other 371 have no injury counts at all."
+TXDOT_CRIS,crash_sev_id,95,,0,"Undocumented in CRIS guide V29.0. Exactly 1 row, with every injury count zero. Treated as unknown (0), never as a severity. See DATA_QUALITY.md."
+NHTSA_FARS,INJ_SEV,4,K,5,Person-level fatal injury. FARS is a fatality census so every accident has at least one.
+NHTSA_FARS,INJ_SEV,3,A,4,Suspected serious injury.
+NHTSA_FARS,INJ_SEV,2,B,3,Suspected minor injury.
+NHTSA_FARS,INJ_SEV,1,C,2,Possible injury.
+NHTSA_FARS,INJ_SEV,0,O,1,No apparent injury.
+NHTSA_FARS,INJ_SEV,5,,0,"LOSSY AND ASYMMETRIC. ""Injured, severity unknown"" -- 1,320 persons. Maps to 0 (unknown), NOT to 2. The person is known to be injured but the degree is not recorded, and no other source has a code for that; collapsing it into ""possible injury"" would invent a severity the record does not assert. severity_note=INJURED_UNKNOWN preserves the fact that injury occurred."
+NHTSA_FARS,INJ_SEV,6,,0,"""Died prior to crash"" -- 17 persons. Maps to 0, NOT to 5. These deaths are not crash outcomes (medical event at the wheel); scoring them as fatal injuries would attribute a death to a crash that did not cause it."
+NHTSA_FARS,INJ_SEV,9,,0,"Unknown. 8,580 persons. Distinct from 5: here it is not known whether the person was injured at all."

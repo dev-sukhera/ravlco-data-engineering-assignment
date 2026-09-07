@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = REPO_ROOT / "config"
 DATA_DIR = Path(os.environ.get("CRASH_DATA_DIR", REPO_ROOT / "data"))
 BRONZE_DIR = DATA_DIR / "bronze"
+SILVER_DIR = DATA_DIR / "silver"
 
 
 @functools.cache
@@ -30,6 +31,35 @@ def sources() -> dict[str, Any]:
     """config/sources.toml -- endpoints, dataset ids, FARS years."""
     with (CONFIG_DIR / "sources.toml").open("rb") as fh:
         return tomllib.load(fh)
+
+
+@functools.cache
+def geo() -> dict[str, Any]:
+    """config/geo.toml -- coordinate envelopes per source.
+
+    Separate from sources.toml because an envelope is a claim about the world
+    that changes on a different clock from an endpoint URL, and because the
+    file has to be editable without touching anything a candidate is told not
+    to modify. See the header of config/geo.toml for the superset argument.
+    """
+    with (CONFIG_DIR / "geo.toml").open("rb") as fh:
+        return tomllib.load(fh)
+
+
+def envelope(source: str) -> dict[str, Any]:
+    """The [envelope.<source>] block, or a raise naming what is configured.
+
+    A missing envelope is a build error, never a silent pass-everything: the
+    whole point of the check is that a source without a declared envelope has
+    not been thought about yet.
+    """
+    envelopes = geo().get("envelope", {})
+    if source not in envelopes:
+        raise KeyError(
+            f"no [envelope.{source}] in config/geo.toml "
+            f"(configured: {sorted(envelopes)})"
+        )
+    return envelopes[source]
 
 
 @functools.cache

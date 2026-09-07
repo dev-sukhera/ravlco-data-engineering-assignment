@@ -1,0 +1,59 @@
+# FARS sentinel values, per table and column.
+#
+# A blanket "7/8/9-fill is unknown" rule is WRONG on this data and would corrupt
+# it. 9 is a legitimate substantive code in several FARS fields -- LGT_COND 9 is
+# not "unknown light", HARM_EV 9 is a real first-harmful-event category, and
+# MAN_COLL 9 is a real collision manner. The rule has to be per column, sourced
+# from the FARS Analytical User's Manual, which is what this file is.
+#
+# Matching is NUMERIC, never string equality. NHTSA changes the decimal
+# formatting of the same sentinel between years: 2019 writes LATITUDE as
+# "77.7777" and 2024 writes "77.77770000". A string match on "77.7777" catches
+# 8 rows in 2019 and 0 in 2024 while 170 sentinel rows sit there unmatched.
+# See match_kind below.
+#
+# match_kind:
+#   numeric_abs   abs(cast(v as double) - sentinel) < tolerance
+#   exact_int     cast(v as integer) = sentinel  (integer-coded fields; no
+#                 formatting drift is possible once cast)
+#
+# Columns:
+#   table          fars silver table the rule applies to (accident|vehicle|person)
+#   column         raw FARS column name
+#   sentinel_value the value that means "not a value"
+#   match_kind     see above
+#   meaning        what NHTSA says it means
+#   source         where the code is documented
+
+table,column,sentinel_value,match_kind,meaning,source
+accident,LATITUDE,77.7777,numeric_abs,Not reported,FARS Analytical User's Manual -- Accident file LATITUDE
+accident,LATITUDE,88.8888,numeric_abs,Not applicable (non-trafficway or outside coverage),FARS Analytical User's Manual -- Accident file LATITUDE
+accident,LATITUDE,99.9999,numeric_abs,Unknown,FARS Analytical User's Manual -- Accident file LATITUDE
+accident,LONGITUD,777.7777,numeric_abs,Not reported,FARS Analytical User's Manual -- Accident file LONGITUD
+accident,LONGITUD,888.8888,numeric_abs,Not applicable,FARS Analytical User's Manual -- Accident file LONGITUD
+accident,LONGITUD,999.9999,numeric_abs,Unknown,FARS Analytical User's Manual -- Accident file LONGITUD
+accident,HOUR,99,exact_int,Unknown hour,FARS Analytical User's Manual -- Accident file HOUR
+accident,MINUTE,99,exact_int,Unknown minute,FARS Analytical User's Manual -- Accident file MINUTE
+accident,NOT_HOUR,99,exact_int,Unknown notification hour,FARS Analytical User's Manual -- Accident file NOT_HOUR
+accident,NOT_MIN,99,exact_int,Unknown notification minute,FARS Analytical User's Manual -- Accident file NOT_MIN
+accident,ARR_HOUR,99,exact_int,Unknown EMS arrival hour,FARS Analytical User's Manual -- Accident file ARR_HOUR
+accident,ARR_HOUR,88,exact_int,Not applicable (EMS not notified),FARS Analytical User's Manual -- Accident file ARR_HOUR
+accident,ARR_MIN,99,exact_int,Unknown EMS arrival minute,FARS Analytical User's Manual -- Accident file ARR_MIN
+accident,ARR_MIN,88,exact_int,Not applicable,FARS Analytical User's Manual -- Accident file ARR_MIN
+accident,HOSP_HR,99,exact_int,Unknown hospital arrival hour,FARS Analytical User's Manual -- Accident file HOSP_HR
+accident,HOSP_HR,88,exact_int,Not applicable (not transported),FARS Analytical User's Manual -- Accident file HOSP_HR
+accident,HOSP_MN,99,exact_int,Unknown hospital arrival minute,FARS Analytical User's Manual -- Accident file HOSP_MN
+accident,HOSP_MN,88,exact_int,Not applicable,FARS Analytical User's Manual -- Accident file HOSP_MN
+accident,MILEPT,99999,exact_int,Unknown milepoint,FARS Analytical User's Manual -- Accident file MILEPT
+person,AGE,998,exact_int,Not reported,FARS Analytical User's Manual -- Person file AGE
+person,AGE,999,exact_int,Unknown age,FARS Analytical User's Manual -- Person file AGE
+person,INJ_SEV,9,exact_int,Unknown whether injured,FARS Analytical User's Manual -- Person file INJ_SEV
+person,DOA,9,exact_int,Unknown,FARS Analytical User's Manual -- Person file DOA
+vehicle,MOD_YEAR,9998,exact_int,Not reported,FARS Analytical User's Manual -- Vehicle file MOD_YEAR
+vehicle,MOD_YEAR,9999,exact_int,Unknown model year,FARS Analytical User's Manual -- Vehicle file MOD_YEAR
+vehicle,TRAV_SP,998,exact_int,Not reported,FARS Analytical User's Manual -- Vehicle file TRAV_SP
+vehicle,TRAV_SP,999,exact_int,Unknown travel speed,FARS Analytical User's Manual -- Vehicle file TRAV_SP
+# TRAV_SP 997 ("151 mph or greater") is deliberately NOT listed. It is a
+# top-code, not a sentinel: the speed IS known to be at least 151 mph. Nulling
+# it would discard a real observation. 33 vehicle rows carry it; the typed
+# column keeps 997 and the report names them.

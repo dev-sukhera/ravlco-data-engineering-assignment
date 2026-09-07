@@ -1,0 +1,78 @@
+# Geographic envelopes for silver's coordinate sanity check.
+#
+# Verified against local bronze 2026-09-07. See ai docs/implementation/
+# phase2-silver-report.md for the measured rejection counts.
+#
+# These are CONFIG, not code, for one reason: an envelope is a claim about the
+# world that changes independently of the transform that applies it. A county
+# annexes land, a source starts publishing a neighbouring jurisdiction, the
+# assignment's stated bbox turns out to clip a real corner of the county -- all
+# of those are edits to a number, not to a pipeline. Hardcoding them buries a
+# falsifiable claim inside a code path where nobody re-derives it.
+#
+# Every envelope below is a STRICT SUPERSET of the true jurisdiction polygon.
+# That is deliberate and it is what makes the check useful: a point outside a
+# superset bbox is definitively outside the jurisdiction (no polygon test can
+# rescue it), whereas a point inside is only a candidate. Phase 4's TIGER
+# point-in-polygon join refines what bbox accepted; it never has to revisit
+# what bbox rejected. Sizing the bbox to the polygon instead would make the two
+# checks disagree and force silver to re-open decisions gold already made.
+#
+# EPSG:4326 throughout. These are degree comparisons on a lat/lon pair, not
+# distances -- no projection is involved or needed. The geodesic distance that
+# IS reported for out-of-envelope points is computed separately (pyproj.Geod on
+# the WGS84 ellipsoid; see src/transform/common.py:geodesic_distance_m).
+
+[envelope.montgomery]
+# Montgomery County, MD. The assignment quotes lat 38.9-39.36, lon -77.54 to
+# -76.87, which is the county's own bounding box to two decimal places and
+# therefore clips it: the true polygon reaches 38.9265-39.3537 lat and
+# -77.5290 to -76.8756 lon, so a crash on the actual county line rounds outside.
+# Padded by 0.02 deg (~2.2 km lat, ~1.7 km lon at this latitude) to make the
+# superset property true rather than approximately true.
+#
+# Both counts are reported: 114 rows fall outside the assignment's raw bbox,
+# and the padded figure is what the pipeline actually flags.
+min_lat = 38.88
+max_lat = 39.38
+min_lon = -77.56
+max_lon = -76.85
+assignment_min_lat = 38.9      # the raw figures from ASSIGNMENT.md Part 1,
+assignment_max_lat = 39.36     # kept so DATA_QUALITY.md can quote the number a
+assignment_min_lon = -77.54    # reviewer will try to reproduce
+assignment_max_lon = -76.87
+label = "Montgomery County, MD (assignment bbox + 0.02 deg pad)"
+
+[envelope.txdot]
+# Texas statewide. True extent is roughly lat 25.837-36.501, lon -106.646 to
+# -93.508 (Boca Chica to the Panhandle line; El Paso to the Sabine). Padded by
+# 0.05 deg. Measured: 0 of 100,000 bronze rows fall outside on either
+# coordinate pair, which is what a state-scoped feed should look like -- the
+# check earns its place as a regression guard, not as a filter.
+min_lat = 25.78
+max_lat = 36.56
+min_lon = -106.70
+max_lon = -93.45
+label = "Texas statewide (state extent + 0.05 deg pad)"
+
+[envelope.fars]
+# FARS is national: 50 states + DC in the local partitions (51 distinct STATE
+# codes, no PR in the National files). There is no jurisdiction polygon to be a
+# superset of, so this is a PLAUSIBILITY envelope only -- it exists to catch
+# sentinel values that survived sentinel handling and gross decimal errors, not
+# to scope the data.
+#
+# Covers CONUS + Alaska (to 71.4N at Point Barrow, -179.15 in the Aleutians) +
+# Hawaii (18.9N, -160.3) + the eastern seaboard (-66.9 at West Quoddy Head).
+# Measured non-sentinel extremes in local bronze: lat 19.035-71.303,
+# lon -165.410 to -67.100 -- comfortably inside.
+#
+# NOTE the western Aleutians cross the antimeridian into positive longitude.
+# No such row is present locally; if one ever appears it will be flagged
+# OUT_OF_ENVELOPE rather than silently accepted, which is the correct failure
+# for a plausibility check (loud, and it names the row).
+min_lat = 17.0
+max_lat = 71.5
+min_lon = -180.0
+max_lon = -64.0
+label = "United States plausibility envelope (CONUS + AK + HI)"
