@@ -1,0 +1,42 @@
+source_system,source_column,source_value,conformed_code,notes
+MONTGOMERY_MD,route_type,Interstate (State),INTERSTATE,Ownership taxonomy but unambiguous: every Interstate is FHWA functional class 1.
+MONTGOMERY_MD,route_type,US (State),STATE_HIGHWAY_UNCLASSIFIED,"LOSSY. US routes in Montgomery County (US-29, US-1) range from freeway to principal arterial; the feed publishes the route SYSTEM, not the functional class."
+MONTGOMERY_MD,route_type,Maryland (State),STATE_HIGHWAY_UNCLASSIFIED,"LOSSY. MD routes span freeway (MD-200) to minor collector. Old dictionary generation spelling."
+MONTGOMERY_MD,route_type,Maryland (State) Route,STATE_HIGHWAY_UNCLASSIFIED,New dictionary generation spelling of the row above. Same meaning.
+MONTGOMERY_MD,route_type,County,COUNTY_MUNICIPAL_UNCLASSIFIED,"LOSSY. County roads include major arterials (Randolph Rd, Muddy Branch Rd) and cul-de-sacs alike. Ownership is not function."
+MONTGOMERY_MD,route_type,County Route,COUNTY_MUNICIPAL_UNCLASSIFIED,New generation spelling of County.
+MONTGOMERY_MD,route_type,Municipality,COUNTY_MUNICIPAL_UNCLASSIFIED,"Rockville, Gaithersburg, Takoma Park streets. Ownership only."
+MONTGOMERY_MD,route_type,Municipality Route,COUNTY_MUNICIPAL_UNCLASSIFIED,New generation spelling of Municipality.
+MONTGOMERY_MD,route_type,Local Route,LOCAL,New generation value that names function rather than ownership -- the one Montgomery value that maps to an FHWA class directly.
+MONTGOMERY_MD,route_type,Ramp,RAMP,Not an FHWA functional class; kept as its own member because a ramp crash is analytically distinct from the mainline.
+MONTGOMERY_MD,route_type,Government,OTHER,"Federal / agency-owned roadway (NIH, Walter Reed, National Park Service parkways). Not in the state functional inventory."
+MONTGOMERY_MD,route_type,Government Route,OTHER,New generation spelling of Government.
+MONTGOMERY_MD,route_type,Other Public Roadway,OTHER,
+MONTGOMERY_MD,route_type,Bicycle Route,OTHER,A trail or bike route where a motor vehicle crash was recorded.
+MONTGOMERY_MD,route_type,Spur,OTHER,
+MONTGOMERY_MD,route_type,Crossover,OTHER,
+MONTGOMERY_MD,route_type,Service Road,OTHER,
+MONTGOMERY_MD,route_type,Private Route,PRIVATE_OR_NOT_IN_INVENTORY,"Parking lots, private drives. Matches FARS 96."
+MONTGOMERY_MD,route_type,Unknown,UNKNOWN,
+MONTGOMERY_MD,route_type,__NULL__,UNKNOWN,"16,640 crashes (13.3%) publish no route_type. Not reported, mapped to unknown."
+NHTSA_FARS,func_sys,1,INTERSTATE,FARS Analytical User's Manual: FUNC_SYS 1 Interstate.
+NHTSA_FARS,func_sys,2,FREEWAY_EXPRESSWAY,FUNC_SYS 2 Principal Arterial - Other Freeways and Expressways.
+NHTSA_FARS,func_sys,3,PRINCIPAL_ARTERIAL,FUNC_SYS 3 Principal Arterial - Other.
+NHTSA_FARS,func_sys,4,MINOR_ARTERIAL,
+NHTSA_FARS,func_sys,5,MAJOR_COLLECTOR,
+NHTSA_FARS,func_sys,6,MINOR_COLLECTOR,
+NHTSA_FARS,func_sys,7,LOCAL,
+NHTSA_FARS,func_sys,96,PRIVATE_OR_NOT_IN_INVENTORY,FUNC_SYS 96 Trafficway Not in State Inventory.
+NHTSA_FARS,func_sys,98,UNKNOWN,FUNC_SYS 98 Not Reported. Collapsed into UNKNOWN for road class (unlike weather) because no source distinguishes the two here.
+NHTSA_FARS,func_sys,99,UNKNOWN,FUNC_SYS 99 Unknown.
+NHTSA_FARS,func_sys,__NULL__,UNKNOWN,Sentinel-nulled or absent.
+TXDOT_CRIS,road_cls_id,1,UNKNOWN,"UNDECODED. The only citable lookup is the CRIS Automated Interface guide V29.0 (txdot.gov/.../cris-guide.pdf); the host was unreachable from the build environment on 2026-09-08 and no other citation exists. 15,440 rows in the 100k slice. Guessing would be a data-quality defect; UNKNOWN is honest."
+TXDOT_CRIS,road_cls_id,2,UNKNOWN,"UNDECODED, see road_cls_id=1. 23,243 rows."
+TXDOT_CRIS,road_cls_id,3,UNKNOWN,"UNDECODED, see road_cls_id=1. 9,099 rows."
+TXDOT_CRIS,road_cls_id,4,UNKNOWN,"UNDECODED, see road_cls_id=1. 6,595 rows."
+TXDOT_CRIS,road_cls_id,5,UNKNOWN,"UNDECODED, see road_cls_id=1. 36,626 rows."
+TXDOT_CRIS,road_cls_id,6,UNKNOWN,"UNDECODED, see road_cls_id=1. 1,472 rows."
+TXDOT_CRIS,road_cls_id,7,UNKNOWN,"UNDECODED, see road_cls_id=1. 93 rows."
+TXDOT_CRIS,road_cls_id,8,UNKNOWN,"UNDECODED, see road_cls_id=1. 1 row."
+TXDOT_CRIS,road_cls_id,9,UNKNOWN,"UNDECODED, see road_cls_id=1. 7,431 rows."
+TXDOT_CRIS,road_cls_id,__NULL__,UNKNOWN,

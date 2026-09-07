@@ -1,0 +1,29 @@
+source_system,source_column,source_value,conformed_code,notes
+MONTGOMERY_MD,pedestrian_type,PEDESTRIAN,PEDESTRIAN,Old dictionary generation.
+MONTGOMERY_MD,pedestrian_type,Pedestrian,PEDESTRIAN,New generation.
+MONTGOMERY_MD,pedestrian_type,BICYCLIST,BICYCLIST,
+MONTGOMERY_MD,pedestrian_type,Cyclist (non-electric),BICYCLIST,
+MONTGOMERY_MD,pedestrian_type,Cyclist (Electric),BICYCLIST,"LOSSY: e-bike vs pedal bike is collapsed. FARS 6 makes no such distinction either, so the conformed member cannot carry it."
+MONTGOMERY_MD,pedestrian_type,OTHER PEDALCYCLIST,OTHER_CYCLIST,Matches FARS PER_TYP 7.
+MONTGOMERY_MD,pedestrian_type,Scooter (electric),PERSONAL_CONVEYANCE,FARS PER_TYP 11 Person on Motorized Personal Conveyance.
+MONTGOMERY_MD,pedestrian_type,Scooter (non-Electric),PERSONAL_CONVEYANCE,FARS PER_TYP 12.
+MONTGOMERY_MD,pedestrian_type,Wheelchair (electric),PERSONAL_CONVEYANCE,
+MONTGOMERY_MD,pedestrian_type,Wheelchair (non-electric),PERSONAL_CONVEYANCE,
+MONTGOMERY_MD,pedestrian_type,OTHER CONVEYANCE,PERSONAL_CONVEYANCE,
+MONTGOMERY_MD,pedestrian_type,MACHINE OPERATOR/RIDER,OTHER,"Ride-on mower, construction equipment operator. Not a personal conveyance in the FARS sense."
+MONTGOMERY_MD,pedestrian_type,"Other Pedestrian (person in a building, skater, personal conveyance, etc.)",OTHER,"LOSSY: the new generation bundles skaters (personal conveyance) with persons in buildings (FARS 10) in one value. Cannot be split; mapped to OTHER."
+MONTGOMERY_MD,pedestrian_type,Occupant of Motor Vehicle Not in Transport,OTHER,FARS PER_TYP 3 is an occupant type and would be out of party scope; Montgomery files it under non-motorists. Kept as OTHER so the row is not lost.
+MONTGOMERY_MD,pedestrian_type,Occupant Of a Non-Motor Vehicle Transportation Device,OTHER,FARS PER_TYP 4.
+MONTGOMERY_MD,pedestrian_type,IN ANIMAL-DRAWN VEH,OTHER,1 row.
+MONTGOMERY_MD,pedestrian_type,OTHER,OTHER,
+MONTGOMERY_MD,pedestrian_type,Unknown,UNKNOWN,
+MONTGOMERY_MD,pedestrian_type,Unknown Type Of Non-Motorist,UNKNOWN,FARS PER_TYP 19 wording.
+MONTGOMERY_MD,pedestrian_type,__NULL__,UNKNOWN,Measured 0 rows; decision recorded for the future null.
+NHTSA_FARS,per_typ,5,PEDESTRIAN,FARS Analytical User's Manual PER_TYP 5.
+NHTSA_FARS,per_typ,6,BICYCLIST,
+NHTSA_FARS,per_typ,7,OTHER_CYCLIST,PER_TYP 7 Other Cyclist / Other Pedalcyclist (wording changed between years; same code).
+NHTSA_FARS,per_typ,8,PERSONAL_CONVEYANCE,PER_TYP 8 Person on a Personal Conveyance (pre-2019-style code still present).
+NHTSA_FARS,per_typ,11,PERSONAL_CONVEYANCE,Motorized personal conveyance.
+NHTSA_FARS,per_typ,12,PERSONAL_CONVEYANCE,Non-motorized personal conveyance.
+NHTSA_FARS,per_typ,13,PERSONAL_CONVEYANCE,"Personal conveyance, unknown if motorized."
+NHTSA_FARS,per_typ,19,UNKNOWN,PER_TYP 19 Unknown Type of Non-Motorist.

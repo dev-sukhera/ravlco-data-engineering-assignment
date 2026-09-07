@@ -1,0 +1,51 @@
+source_system,source_column,source_value,conformed_code,notes
+MONTGOMERY_MD,weather,CLEAR,CLEAR,Old dictionary generation.
+MONTGOMERY_MD,weather,Clear,CLEAR,New generation. Case change only.
+MONTGOMERY_MD,weather,RAINING,RAIN,Old generation.
+MONTGOMERY_MD,weather,Rain,RAIN,New generation.
+MONTGOMERY_MD,weather,CLOUDY,CLOUDY,
+MONTGOMERY_MD,weather,Cloudy,CLOUDY,
+MONTGOMERY_MD,weather,SNOW,SNOW,
+MONTGOMERY_MD,weather,Snow,SNOW,
+MONTGOMERY_MD,weather,FOGGY,FOG_SMOKE,Old generation collapses fog/smog/smoke into FOGGY; the new generation and FARS name all three. Conformed member covers the union.
+MONTGOMERY_MD,weather,"Fog, Smog, Smoke",FOG_SMOKE,New generation. Same wording as FARS WEATHER 5.
+MONTGOMERY_MD,weather,SLEET,SLEET_HAIL,
+MONTGOMERY_MD,weather,Sleet Or Hail,SLEET_HAIL,
+MONTGOMERY_MD,weather,WINTRY MIX,WINTRY_MIX,"LOSSY IN THE OTHER DIRECTION: no FARS or TxDOT code means 'mixed precipitation'. Kept as its own member rather than forced into SNOW or SLEET; 252 rows."
+MONTGOMERY_MD,weather,SEVERE WINDS,SEVERE_WIND,
+MONTGOMERY_MD,weather,Severe Crosswinds,SEVERE_WIND,New generation wording matches FARS WEATHER 6.
+MONTGOMERY_MD,weather,BLOWING SNOW,BLOWING_SNOW,
+MONTGOMERY_MD,weather,Blowing Snow,BLOWING_SNOW,
+MONTGOMERY_MD,weather,Freezing Rain Or Freezing Drizzle,FREEZING_RAIN,New generation only; the old generation had no freezing-rain code (those crashes sit in SLEET or WINTRY MIX and cannot be recovered).
+MONTGOMERY_MD,weather,"BLOWING SAND, SOIL, DIRT",BLOWING_SAND,
+MONTGOMERY_MD,weather,"Blowing Sand, Soil, Dirt",BLOWING_SAND,
+MONTGOMERY_MD,weather,OTHER,OTHER,
+MONTGOMERY_MD,weather,N/A,NOT_REPORTED,"7,948 rows. The officer did not fill the field. Distinct from UNKNOWN (the officer could not tell), as FARS 98 vs 99."
+MONTGOMERY_MD,weather,UNKNOWN,UNKNOWN,
+MONTGOMERY_MD,weather,Unknown,UNKNOWN,
+MONTGOMERY_MD,weather,__NULL__,NOT_REPORTED,Measured 0 rows in the current slice; row kept so a future null has a decision.
+NHTSA_FARS,weather,1,CLEAR,FARS Analytical User's Manual WEATHER 1 Clear.
+NHTSA_FARS,weather,2,RAIN,
+NHTSA_FARS,weather,3,SLEET_HAIL,WEATHER 3 Sleet or Hail.
+NHTSA_FARS,weather,4,SNOW,
+NHTSA_FARS,weather,5,FOG_SMOKE,"WEATHER 5 Fog, Smog, Smoke."
+NHTSA_FARS,weather,6,SEVERE_WIND,WEATHER 6 Severe Crosswinds.
+NHTSA_FARS,weather,7,BLOWING_SAND,"WEATHER 7 Blowing Sand, Soil, Dirt."
+NHTSA_FARS,weather,8,OTHER,
+NHTSA_FARS,weather,10,CLOUDY,
+NHTSA_FARS,weather,11,BLOWING_SNOW,
+NHTSA_FARS,weather,12,FREEZING_RAIN,WEATHER 12 Freezing Rain or Drizzle.
+NHTSA_FARS,weather,98,NOT_REPORTED,
+NHTSA_FARS,weather,99,UNKNOWN,WEATHER 99 Reported as Unknown.
+NHTSA_FARS,weather,__NULL__,NOT_REPORTED,
+TXDOT_CRIS,wthr_cond_id,0,UNKNOWN,"UNDECODED. CRIS guide V29.0 unreachable from the build environment on 2026-09-08; no other citation. 592 rows. 0 is plausibly 'unknown' by CRIS convention (as crash_sev_id 0 was verified to be) but is NOT verified here."
+TXDOT_CRIS,wthr_cond_id,2,UNKNOWN,"UNDECODED, see wthr_cond_id=0. 7,419 rows."
+TXDOT_CRIS,wthr_cond_id,3,UNKNOWN,"UNDECODED. 206 rows."
+TXDOT_CRIS,wthr_cond_id,4,UNKNOWN,"UNDECODED. 225 rows."
+TXDOT_CRIS,wthr_cond_id,5,UNKNOWN,"UNDECODED. 399 rows."
+TXDOT_CRIS,wthr_cond_id,6,UNKNOWN,"UNDECODED. 30 rows."
+TXDOT_CRIS,wthr_cond_id,7,UNKNOWN,"UNDECODED. 80 rows."
+TXDOT_CRIS,wthr_cond_id,8,UNKNOWN,"UNDECODED. 86 rows."
+TXDOT_CRIS,wthr_cond_id,11,UNKNOWN,"UNDECODED. 78,336 rows (78% of the slice) -- almost certainly Clear, but 'almost certainly' is a guess and the crosswalk carries decisions, not guesses."
+TXDOT_CRIS,wthr_cond_id,12,UNKNOWN,"UNDECODED. 12,627 rows -- plausibly Cloudy. Not verified."
+TXDOT_CRIS,wthr_cond_id,__NULL__,NOT_REPORTED,

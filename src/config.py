@@ -24,6 +24,7 @@ CONFIG_DIR = REPO_ROOT / "config"
 DATA_DIR = Path(os.environ.get("CRASH_DATA_DIR", REPO_ROOT / "data"))
 BRONZE_DIR = DATA_DIR / "bronze"
 SILVER_DIR = DATA_DIR / "silver"
+GOLD_DIR = DATA_DIR / "gold"
 
 
 @functools.cache
@@ -60,6 +61,18 @@ def envelope(source: str) -> dict[str, Any]:
             f"(configured: {sorted(envelopes)})"
         )
     return envelopes[source]
+
+
+@functools.cache
+def model() -> dict[str, Any]:
+    """config/model.toml -- gold scope and entity-resolution thresholds.
+
+    Its own file because these are the numbers the memo has to defend and the
+    live defence will ask to change: a jurisdiction is added or a match
+    threshold tightened here, never in `src/transform/model.py`.
+    """
+    with (CONFIG_DIR / "model.toml").open("rb") as fh:
+        return tomllib.load(fh)
 
 
 @functools.cache

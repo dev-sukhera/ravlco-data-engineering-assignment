@@ -1,0 +1,52 @@
+# Gold-layer scope and entity-resolution thresholds. Data, not code: change a
+# number here, rebuild, and the manifest records which numbers produced which
+# bridge table. See src/transform/model.py and src/transform/resolve.py.
+
+[scope]
+# Only these jurisdictions reach gold. FARS is national; everything outside this
+# list is excluded from the facts and the excluded count per state is written to
+# the build manifest so the crash count changes by DECLARED scope, visibly.
+jurisdictions = ["MD", "TX", "FL"]
+
+[precedence]
+# Which source's record is primary when one crash appears in several. The
+# operational all-severity record outranks the fatality census because the
+# operational record is the one an amendment arrives on, and because its key
+# must not move when a FARS match is later found or lost.
+source_systems = ["MONTGOMERY_MD", "TXDOT_CRIS", "NHTSA_FARS"]
+
+[resolution]
+# Blocking: same jurisdiction, same county, crash dates at most this far apart.
+# 1, not 0, because a crash at 23:50 can be dated the next day in one source
+# and the same day in another. Measured 2026-09-08: 0 of 1,157 accepted matches
+# actually straddle midnight -- the window costs nothing and guards the case.
+max_date_delta_days = 1
+
+# Tier A: both sides have OK coordinates and a time. Measured on the local
+# silver 2026-09-08 (FARS Montgomery County 2019-2024 vs Montgomery fatal-typed
+# crashes): 205 of 208 nearest pairs are within 100 m AND 30 min; the 95th
+# percentile distance is 23 m. The threshold sits an order of magnitude above
+# the observed distribution and two orders below the nearest NON-matching crash
+# (median 1,264 m, 17 h). FARS Texas vs TxDOT fatal crashes: 831 of 997 within
+# 100 m / 30 min, 73 more within 250 m.
+tier_a_max_distance_m = 250
+tier_a_max_time_min = 30
+
+# Tier B: same coordinates test but looser -- catches a geocode placed at the
+# wrong end of a block or a time rounded to the hour. Admitted, flagged; every
+# tier-B pair is listed in the resolve report for inspection.
+tier_b_max_distance_m = 1000
+tier_b_max_time_min = 120
+
+# Tier C: one side has no usable coordinate (FARS sentinel, quarantined
+# envelope, TxDOT MISSING). County + date + time only. Time must be tight
+# because location is not available to disambiguate.
+tier_c_max_time_min = 30
+
+# Whether a FARS fatality may match a non-FARS crash that the source itself did
+# NOT record as fatal (the "died within 30 days" case -- FARS counts deaths up
+# to 30 days after the crash, Montgomery and TxDOT record at-scene severity).
+# Off by default: such pairs are MEASURED and reported, not admitted, because
+# admitting them changes the primary record's severity on the strength of a
+# proximity match alone. Flip to true and rebuild to see the alternative.
+admit_non_fatal_candidates = false
