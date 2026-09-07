@@ -287,3 +287,74 @@ class PipelineRunner:
 @pytest.fixture
 def pipeline_runner(bronze_root: Path, tmp_path: Path) -> PipelineRunner:
     return PipelineRunner(bronze_root, tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# gold (Phase 3)
+# ---------------------------------------------------------------------------
+
+from src.transform import model as model_module  # noqa: E402
+
+
+def build_gold_into(dest: Path, silver_root: Path, **kwargs) -> dict:
+    """Run the real gold build into `dest`. Same rule as silver: no mocks."""
+    return model_module.build_gold(
+        silver_root=silver_root,
+        gold_root=dest,
+        small_corpus=not using_full_bronze(),
+        **kwargs,
+    )
+
+
+@pytest.fixture(scope="session")
+def gold_root(tmp_path_factory, silver_root: Path) -> Path:
+    """Gold, built once per session from the session's silver."""
+    dest = tmp_path_factory.mktemp("gold")
+    build_gold_into(dest, silver_root)
+    return dest
+
+
+@pytest.fixture(scope="session")
+def gold_manifest(gold_root: Path) -> dict:
+    return json.loads((gold_root / "_build_manifest.json").read_text())
+
+
+@pytest.fixture(scope="session")
+def gold_con(gold_root: Path, silver_root: Path):
+    """One connection with `gold_<table>` AND `silver_<table>` views, because
+    every gold test is a reconciliation against silver."""
+    con = c.connect()
+    for root, prefix in ((gold_root, "gold_"), (silver_root, "silver_")):
+        for path in sorted(root.rglob("*.parquet")):
+            rel = path.relative_to(root)
+            name = prefix + "_".join(rel.with_suffix("").parts).replace("-", "_")
+            p = str(path).replace("'", "''")
+            con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_parquet('{p}')")
+    yield con
+    con.close()
+
+
+class GoldRunner(PipelineRunner):
+    """Silver AND gold from a bronze tree, hashing the gold parquet files.
+
+    Returns {relative gold path: sha256}; `self.last_gold` / `self.last_silver`
+    point at the directories of the most recent run so a test can open the
+    tables and say WHICH row changed, not just that bytes did.
+    """
+
+    def run(self, bronze_root: Path | None = None) -> dict[str, str]:  # type: ignore[override]
+        self._n += 1
+        silver = self.workdir / f"silver_{self._n:02d}"
+        gold = self.workdir / f"gold_{self._n:02d}"
+        build_silver_into(silver, bronze_root or self.bronze_root)
+        build_gold_into(gold, silver)
+        self.last_silver, self.last_gold = silver, gold
+        return {
+            str(p.relative_to(gold)): __import__("hashlib").sha256(p.read_bytes()).hexdigest()
+            for p in sorted(gold.rglob("*.parquet"))
+        }
+
+
+@pytest.fixture
+def gold_runner(bronze_root: Path, tmp_path: Path) -> GoldRunner:
+    return GoldRunner(bronze_root, tmp_path)

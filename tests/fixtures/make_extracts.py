@@ -154,12 +154,21 @@ def build(bronze: Path, out: Path) -> dict[str, int]:
         types AS (
             SELECT DISTINCT ON (acrs_report_type) ":id" AS id FROM d
             ORDER BY acrs_report_type, ":id"
+        ),
+        -- Phase 3: every 2019 fatal crash, so the extract holds the LOCAL side
+        -- of real FARS ∩ Montgomery pairs (the FARS side is fars_pick_2019's
+        -- `md_county` block). Added, not re-sampled: every block above is
+        -- unchanged, so the earlier fixture rows are all still here.
+        fatal_2019 AS (
+            SELECT ":id" AS id FROM d
+            WHERE acrs_report_type = 'Fatal Crash'
+              AND substr(crash_date_time, 1, 4) = '2019'
         )
         SELECT DISTINCT id FROM (
             SELECT id FROM outside UNION ALL SELECT id FROM orphan
             UNION ALL SELECT id FROM joins UNION ALL SELECT id FROM cutover
             UNION ALL SELECT id FROM multi UNION ALL SELECT id FROM lanes
-            UNION ALL SELECT id FROM types)
+            UNION ALL SELECT id FROM types UNION ALL SELECT id FROM fatal_2019)
         """
     )
     con.execute(
@@ -305,10 +314,18 @@ def build(bronze: Path, out: Path) -> dict[str, int]:
             ),
             normal AS (
                 SELECT ST_CASE FROM fars_accident_{year} ORDER BY ST_CASE LIMIT 25
+            ),
+            -- Phase 3: Montgomery County, MD (STATE 24, COUNTY 31 -- FARS does
+            -- not zero-pad). Real FARS records whose crashes also appear in the
+            -- Montgomery feed, for the entity-resolution tests. 2019 only.
+            md_county AS (
+                SELECT ST_CASE FROM fars_accident_{year}
+                WHERE STATE = '24' AND COUNTY = '31' AND '{year}' = '2019'
             )
             SELECT DISTINCT ST_CASE FROM (
                 SELECT ST_CASE FROM sentinel UNION ALL SELECT ST_CASE FROM unknown_hour
-                UNION ALL SELECT ST_CASE FROM in_scope UNION ALL SELECT ST_CASE FROM normal)
+                UNION ALL SELECT ST_CASE FROM in_scope UNION ALL SELECT ST_CASE FROM normal
+                UNION ALL SELECT ST_CASE FROM md_county)
             """
         )
         base = out / "fars" / year
@@ -346,6 +363,20 @@ def build(bronze: Path, out: Path) -> dict[str, int]:
         counts[f"fars/2019/{FARS_P2}/{member}"] = _write(
             con, sql, base / FARS_P2 / f"{member}.parquet", load_ts=FARS_P2)
 
+    known_pairs = {
+        # Both sides of the real FARS ∩ Montgomery overlap present in the extract.
+        # The test re-derives which pairs match (same date, geodesic proximity)
+        # independently of src/transform/resolve.py, so this is evidence, not
+        # an expected-output snapshot.
+        "fars_2019_md_county_031_st_cases": [
+            r[0] for r in con.execute(
+                "SELECT ST_CASE FROM fars_accident_2019 WHERE STATE='24' AND COUNTY='31' "
+                "ORDER BY ST_CASE").fetchall()],
+        "montgomery_fatal_2019_report_numbers": [
+            r[0] for r in con.execute(
+                "SELECT DISTINCT report_number FROM inc_rows WHERE acrs_report_type='Fatal Crash' "
+                "AND substr(crash_date_time, 1, 4) = '2019' ORDER BY 1").fetchall()],
+    }
     manifest = {
         "generated_by": "python -m tests.fixtures.make_extracts",
         "source_bronze": str(bronze),
@@ -360,6 +391,7 @@ def build(bronze: Path, out: Path) -> dict[str, int]:
             "fars_2019_revised_st_case": revised,
             "fars_2019_removed_st_case": removed,
         },
+        "known_pairs": known_pairs,
         "row_counts": counts,
     }
     (out / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
