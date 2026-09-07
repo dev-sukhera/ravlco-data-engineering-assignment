@@ -1,0 +1,1539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/gold.schema.json",
+  "title": "Gold layer contracts",
+  "description": "One entry per gold table, same dialect as bronze/silver/lead_output. Row shape in `properties`; grain, referential integrity and the row-count floor in `x-table-constraints`. No `orphans_allowed_when` anywhere in gold: every dimension has an explicit UNKNOWN member, so a missing parent is always a bug.",
+  "tables": {
+    "gold.fact_crash": {
+      "title": "Crash fact",
+      "description": "One row per RESOLVED crash. The natural key is the primary source record's (source_system, source_record_id); crash_sk is a 60-bit SHA-256 of primary_crash_uid, deterministic and stable under restatement and under a FARS match being found or lost. Severity is the max across linked sources (severity_grain RESOLVED_MAX when they disagree); severity_ordinal_primary keeps the primary's own value. Counts come from party rows for Montgomery/FARS and from CRIS crash-level counts for TxDOT (count_source). Every *_sk is NOT NULL: dimensions carry a -1 UNKNOWN member.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "crash_sk",
+        "primary_crash_uid",
+        "primary_source_system",
+        "natural_key",
+        "jurisdiction",
+        "date_sk",
+        "time_sk",
+        "crash_date",
+        "geography_sk",
+        "road_class_sk",
+        "weather_condition_sk",
+        "severity_sk",
+        "severity_ordinal",
+        "severity_ordinal_primary",
+        "severity_grain",
+        "geo_quality",
+        "source_count",
+        "in_montgomery",
+        "in_txdot",
+        "in_fars",
+        "count_source",
+        "silver_version_no",
+        "silver_valid_from",
+        "_silver_build_sha"
+      ],
+      "properties": {
+        "crash_sk": {
+          "type": "integer"
+        },
+        "primary_crash_uid": {
+          "type": "string",
+          "pattern": "^(MONTGOMERY_MD|TXDOT_CRIS|NHTSA_FARS):.+$"
+        },
+        "primary_source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "TXDOT_CRIS",
+            "NHTSA_FARS"
+          ]
+        },
+        "natural_key": {
+          "type": "string"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "date_sk": {
+          "type": "integer",
+          "minimum": 19000101
+        },
+        "time_sk": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 2359
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "crash_datetime_local": {
+          "type": [
+            "timestamp",
+            "null"
+          ]
+        },
+        "geography_sk": {
+          "type": "integer"
+        },
+        "road_class_sk": {
+          "type": "integer"
+        },
+        "weather_condition_sk": {
+          "type": "integer"
+        },
+        "severity_sk": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_ordinal_primary": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_grain": {
+          "type": "string",
+          "enum": [
+            "MAX_OVER_PARTIES",
+            "CRASH_REPORT_TYPE",
+            "SOURCE_CRASH_LEVEL",
+            "FATALITY_CENSUS",
+            "RESOLVED_MAX"
+          ]
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "source_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "in_montgomery": {
+          "type": "boolean"
+        },
+        "in_txdot": {
+          "type": "boolean"
+        },
+        "in_fars": {
+          "type": "boolean"
+        },
+        "driver_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "non_motorist_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "vehicle_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "fatal_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "serious_injury_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minor_injury_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "possible_injury_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "count_source": {
+          "type": "string",
+          "enum": [
+            "PARTY_ROWS",
+            "CRIS_COUNTS"
+          ]
+        },
+        "fars_fatal_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hit_run": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "pedestrian_involved": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "bicyclist_involved": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "work_zone": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "intersection_related": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "alcohol_suspected": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "drug_suspected": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "is_amended": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "silver_version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "silver_valid_from": {
+          "type": "string"
+        },
+        "_silver_build_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "crash_sk"
+          ],
+          [
+            "primary_crash_uid"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "date_sk"
+            ],
+            "references": {
+              "table": "gold.dim_date",
+              "columns": [
+                "date_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "time_sk"
+            ],
+            "references": {
+              "table": "gold.dim_time",
+              "columns": [
+                "time_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "geography_sk"
+            ],
+            "references": {
+              "table": "gold.dim_geography",
+              "columns": [
+                "geography_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "road_class_sk"
+            ],
+            "references": {
+              "table": "gold.dim_road_class",
+              "columns": [
+                "road_class_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "weather_condition_sk"
+            ],
+            "references": {
+              "table": "gold.dim_weather_condition",
+              "columns": [
+                "weather_condition_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "severity_sk"
+            ],
+            "references": {
+              "table": "gold.dim_severity",
+              "columns": [
+                "severity_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "crash_sk"
+            ],
+            "references": {
+              "table": "gold.bridge_crash_source",
+              "columns": [
+                "crash_sk"
+              ]
+            },
+            "description": "Every resolved crash has at least its primary row in the bridge."
+          }
+        ],
+        "row_count_min": 200000
+      }
+    },
+    "gold.bridge_crash_source": {
+      "title": "Crash-to-source bridge",
+      "description": "One row per (resolved crash, contributing silver.crash record). Every in-scope silver crash_uid appears exactly once -- that is the silver-to-gold reconciliation. is_primary marks the record whose key the fact carries; matched FARS rows carry the tier, distance and time delta of the match.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "crash_sk",
+        "crash_uid",
+        "source_system",
+        "source_record_id",
+        "is_primary",
+        "match_method"
+      ],
+      "properties": {
+        "crash_sk": {
+          "type": "integer"
+        },
+        "crash_uid": {
+          "type": "string",
+          "pattern": "^(MONTGOMERY_MD|TXDOT_CRIS|NHTSA_FARS):.+$"
+        },
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "TXDOT_CRIS",
+            "NHTSA_FARS"
+          ]
+        },
+        "source_record_id": {
+          "type": "string"
+        },
+        "is_primary": {
+          "type": "boolean"
+        },
+        "match_method": {
+          "type": "string",
+          "enum": [
+            "SINGLE_SOURCE",
+            "PRIMARY_OF_MATCH",
+            "FATAL_DATE_GEO_TIME_A",
+            "FATAL_DATE_GEO_TIME_B",
+            "FATAL_DATE_COUNTY_TIME"
+          ]
+        },
+        "match_tier": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        "dist_m": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "time_delta_min": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "date_delta_days": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "crash_uid"
+          ],
+          [
+            "crash_sk",
+            "crash_uid"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "crash_sk"
+            ],
+            "references": {
+              "table": "gold.fact_crash",
+              "columns": [
+                "crash_sk"
+              ]
+            },
+            "description": "Every bridge row -- primary or matched FARS -- hangs off a fact row."
+          }
+        ],
+        "row_count_min": 200000
+      }
+    },
+    "gold.fact_driver": {
+      "title": "Driver fact",
+      "description": "One row per driver: Montgomery driver rows (person_id) and FARS persons with PER_TYP 1. TxDOT publishes no person rows, so it contributes none by construction. crash_sk is the RESOLVED crash, so a FARS driver on a matched Montgomery crash points at the Montgomery key.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "driver_sk",
+        "crash_sk",
+        "crash_uid",
+        "source_system",
+        "party_natural_key",
+        "date_sk",
+        "severity_sk",
+        "severity_ordinal",
+        "alcohol_status",
+        "drug_status",
+        "silver_version_no",
+        "silver_valid_from"
+      ],
+      "properties": {
+        "driver_sk": {
+          "type": "integer"
+        },
+        "crash_sk": {
+          "type": "integer"
+        },
+        "crash_uid": {
+          "type": "string"
+        },
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "NHTSA_FARS"
+          ]
+        },
+        "party_natural_key": {
+          "type": "string"
+        },
+        "date_sk": {
+          "type": "integer"
+        },
+        "severity_sk": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_kabco": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "K",
+            "A",
+            "B",
+            "C",
+            "O"
+          ]
+        },
+        "severity_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "age": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 120
+        },
+        "alcohol_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "drug_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "at_fault": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "vehicle_year": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "vehicle_make": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_body_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "speed_limit": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "licence_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "silver_version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "silver_valid_from": {
+          "type": "string"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "driver_sk"
+          ],
+          [
+            "source_system",
+            "party_natural_key"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "crash_sk"
+            ],
+            "references": {
+              "table": "gold.fact_crash",
+              "columns": [
+                "crash_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "crash_uid"
+            ],
+            "references": {
+              "table": "gold.bridge_crash_source",
+              "columns": [
+                "crash_uid"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "date_sk"
+            ],
+            "references": {
+              "table": "gold.dim_date",
+              "columns": [
+                "date_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "severity_sk"
+            ],
+            "references": {
+              "table": "gold.dim_severity",
+              "columns": [
+                "severity_sk"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 200000
+      }
+    },
+    "gold.fact_non_motorist": {
+      "title": "Non-motorist fact",
+      "description": "One row per non-motorist: Montgomery non-motorist rows and FARS persons with PER_TYP 5/6/7/8/11/12/13/19. FARS passengers and other occupants (2/3/4/9/10) are out of party scope and counted in the manifest.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "non_motorist_sk",
+        "crash_sk",
+        "crash_uid",
+        "source_system",
+        "party_natural_key",
+        "date_sk",
+        "severity_sk",
+        "severity_ordinal",
+        "non_motorist_type_sk",
+        "alcohol_status",
+        "drug_status",
+        "silver_version_no",
+        "silver_valid_from"
+      ],
+      "properties": {
+        "non_motorist_sk": {
+          "type": "integer"
+        },
+        "crash_sk": {
+          "type": "integer"
+        },
+        "crash_uid": {
+          "type": "string"
+        },
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "NHTSA_FARS"
+          ]
+        },
+        "party_natural_key": {
+          "type": "string"
+        },
+        "date_sk": {
+          "type": "integer"
+        },
+        "severity_sk": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_kabco": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "K",
+            "A",
+            "B",
+            "C",
+            "O"
+          ]
+        },
+        "severity_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "non_motorist_type_sk": {
+          "type": "integer"
+        },
+        "age": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 120
+        },
+        "alcohol_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "drug_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "at_fault": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "pedestrian_movement": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pedestrian_location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "safety_equipment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "silver_version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "silver_valid_from": {
+          "type": "string"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "non_motorist_sk"
+          ],
+          [
+            "source_system",
+            "party_natural_key"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "crash_sk"
+            ],
+            "references": {
+              "table": "gold.fact_crash",
+              "columns": [
+                "crash_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "crash_uid"
+            ],
+            "references": {
+              "table": "gold.bridge_crash_source",
+              "columns": [
+                "crash_uid"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "date_sk"
+            ],
+            "references": {
+              "table": "gold.dim_date",
+              "columns": [
+                "date_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "severity_sk"
+            ],
+            "references": {
+              "table": "gold.dim_severity",
+              "columns": [
+                "severity_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "non_motorist_type_sk"
+            ],
+            "references": {
+              "table": "gold.dim_non_motorist_type",
+              "columns": [
+                "non_motorist_type_sk"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 10000
+      }
+    },
+    "gold.dim_date": {
+      "title": "Date dimension",
+      "description": "Calendar days spanning every fact date. date_sk is yyyymmdd.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "date_sk",
+        "date",
+        "year",
+        "quarter",
+        "month",
+        "day",
+        "day_of_week",
+        "is_weekend",
+        "iso_week",
+        "day_name",
+        "month_name"
+      ],
+      "properties": {
+        "date_sk": {
+          "type": "integer"
+        },
+        "date": {
+          "type": "date"
+        },
+        "year": {
+          "type": "integer"
+        },
+        "quarter": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "month": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "day": {
+          "type": "integer"
+        },
+        "day_of_week": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "is_weekend": {
+          "type": "boolean"
+        },
+        "iso_week": {
+          "type": "integer"
+        },
+        "day_name": {
+          "type": "string"
+        },
+        "month_name": {
+          "type": "string"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "date_sk"
+          ],
+          [
+            "date"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 365
+      }
+    },
+    "gold.dim_time": {
+      "title": "Time-of-day dimension",
+      "description": "One row per minute of local wall-clock time plus the -1 UNKNOWN member (FARS HOUR/MINUTE 99). Pre-localisation by design; is_night is a fixed clock rule until Phase 4 supplies sun times.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "time_sk",
+        "hour_bucket"
+      ],
+      "properties": {
+        "time_sk": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 2359
+        },
+        "hour": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 23
+        },
+        "minute": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 59
+        },
+        "hour_bucket": {
+          "type": "string",
+          "enum": [
+            "UNKNOWN",
+            "00-05",
+            "06-09",
+            "10-15",
+            "16-19",
+            "20-23"
+          ]
+        },
+        "is_night": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "time_sk"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 1441
+      }
+    },
+    "gold.dim_geography": {
+      "title": "Geography dimension",
+      "description": "Every county in the in-scope states (Census 2020 county list, config/counties.csv) with geography_sk = county GEOID, one STATE-level member per jurisdiction (sk = state FIPS) for rows whose county is unknown, and -1 UNKNOWN. Phase 4 hangs tract / block group / H3 off this.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "geography_sk",
+        "level"
+      ],
+      "properties": {
+        "geography_sk": {
+          "type": "integer"
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "UNKNOWN",
+            "STATE",
+            "COUNTY"
+          ]
+        },
+        "jurisdiction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state_fips": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{2}$"
+        },
+        "county_fips": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{3}$"
+        },
+        "county_geoid": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{5}$"
+        },
+        "county_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "geography_sk"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 4
+      }
+    },
+    "gold.dim_road_class": {
+      "title": "Road class dimension",
+      "description": "FHWA functional classes plus RAMP, PRIVATE_OR_NOT_IN_INVENTORY, OTHER and two bridging members for sources that publish ownership rather than function (STATE_HIGHWAY_UNCLASSIFIED, COUNTY_MUNICIPAL_UNCLASSIFIED). functional_class_known says which. sk = position in src/transform/conformed.py; UNKNOWN = -1.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "road_class_sk",
+        "road_class_code",
+        "road_class_label"
+      ],
+      "properties": {
+        "road_class_sk": {
+          "type": "integer"
+        },
+        "road_class_code": {
+          "type": "string"
+        },
+        "road_class_label": {
+          "type": "string"
+        },
+        "functional_class_known": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "fhwa_class": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "road_class_sk"
+          ],
+          [
+            "road_class_code"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 13
+      }
+    },
+    "gold.dim_weather_condition": {
+      "title": "Officer-reported weather dimension",
+      "description": "Conformed weather-at-crash as REPORTED by the officer. NOT_REPORTED and UNKNOWN are distinct members. The ERA5 reanalysis weather join is Phase 4 and is a different fact.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "weather_condition_sk",
+        "weather_condition_code",
+        "weather_condition_label"
+      ],
+      "properties": {
+        "weather_condition_sk": {
+          "type": "integer"
+        },
+        "weather_condition_code": {
+          "type": "string"
+        },
+        "weather_condition_label": {
+          "type": "string"
+        },
+        "is_precipitation": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "is_adverse": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "weather_condition_sk"
+          ],
+          [
+            "weather_condition_code"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 14
+      }
+    },
+    "gold.dim_non_motorist_type": {
+      "title": "Non-motorist type dimension",
+      "description": "",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "non_motorist_type_sk",
+        "non_motorist_type_code",
+        "non_motorist_type_label"
+      ],
+      "properties": {
+        "non_motorist_type_sk": {
+          "type": "integer"
+        },
+        "non_motorist_type_code": {
+          "type": "string"
+        },
+        "non_motorist_type_label": {
+          "type": "string"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "non_motorist_type_sk"
+          ],
+          [
+            "non_motorist_type_code"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 6
+      }
+    },
+    "gold.dim_severity": {
+      "title": "Severity dimension",
+      "description": "The single harmonised 0-5 scale: 0 unknown, 1 O, 2 C, 3 B, 4 A, 5 K. Lossiness is described per member and per source row in map_severity_source.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "severity_sk",
+        "label",
+        "is_injury",
+        "is_fatal",
+        "description"
+      ],
+      "properties": {
+        "severity_sk": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "kabco": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "K",
+            "A",
+            "B",
+            "C",
+            "O"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "is_injury": {
+          "type": "boolean"
+        },
+        "is_fatal": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "severity_sk"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 6
+      }
+    },
+    "gold.map_severity_source": {
+      "title": "Severity crosswalk as data",
+      "description": "config/severity_crosswalk.csv materialised.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "source_system",
+        "source_column",
+        "source_value",
+        "severity_ordinal",
+        "severity_label"
+      ],
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "TXDOT_CRIS",
+            "NHTSA_FARS"
+          ]
+        },
+        "source_column": {
+          "type": "string"
+        },
+        "source_value": {
+          "type": "string"
+        },
+        "kabco": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_label": {
+          "type": "string"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "source_system",
+            "source_column",
+            "source_value"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "severity_ordinal"
+            ],
+            "references": {
+              "table": "gold.dim_severity",
+              "columns": [
+                "severity_sk"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 20
+      }
+    },
+    "gold.map_road_class_source": {
+      "title": "Road class crosswalk as data",
+      "description": "config/road_class_crosswalk.csv materialised; is_lossy derived from the notes.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "source_system",
+        "source_column",
+        "source_value",
+        "conformed_code",
+        "road_class_sk",
+        "is_lossy"
+      ],
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "TXDOT_CRIS",
+            "NHTSA_FARS"
+          ]
+        },
+        "source_column": {
+          "type": "string"
+        },
+        "source_value": {
+          "type": "string"
+        },
+        "conformed_code": {
+          "type": "string"
+        },
+        "road_class_sk": {
+          "type": "integer"
+        },
+        "is_lossy": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "source_system",
+            "source_column",
+            "source_value"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "road_class_sk"
+            ],
+            "references": {
+              "table": "gold.dim_road_class",
+              "columns": [
+                "road_class_sk"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 30
+      }
+    },
+    "gold.map_weather_source": {
+      "title": "Weather crosswalk as data",
+      "description": "config/weather_crosswalk.csv materialised.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "source_system",
+        "source_column",
+        "source_value",
+        "conformed_code",
+        "weather_condition_sk",
+        "is_lossy"
+      ],
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "TXDOT_CRIS",
+            "NHTSA_FARS"
+          ]
+        },
+        "source_column": {
+          "type": "string"
+        },
+        "source_value": {
+          "type": "string"
+        },
+        "conformed_code": {
+          "type": "string"
+        },
+        "weather_condition_sk": {
+          "type": "integer"
+        },
+        "is_lossy": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "source_system",
+            "source_column",
+            "source_value"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "weather_condition_sk"
+            ],
+            "references": {
+              "table": "gold.dim_weather_condition",
+              "columns": [
+                "weather_condition_sk"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 40
+      }
+    },
+    "gold.map_non_motorist_type_source": {
+      "title": "Non-motorist type crosswalk as data",
+      "description": "config/non_motorist_type_crosswalk.csv materialised.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "source_system",
+        "source_column",
+        "source_value",
+        "conformed_code",
+        "non_motorist_type_sk",
+        "is_lossy"
+      ],
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "NHTSA_FARS"
+          ]
+        },
+        "source_column": {
+          "type": "string"
+        },
+        "source_value": {
+          "type": "string"
+        },
+        "conformed_code": {
+          "type": "string"
+        },
+        "non_motorist_type_sk": {
+          "type": "integer"
+        },
+        "is_lossy": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "source_system",
+            "source_column",
+            "source_value"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "non_motorist_type_sk"
+            ],
+            "references": {
+              "table": "gold.dim_non_motorist_type",
+              "columns": [
+                "non_motorist_type_sk"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 20
+      }
+    }
+  }
+}
