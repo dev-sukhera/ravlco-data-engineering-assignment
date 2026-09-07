@@ -76,3 +76,212 @@ max_lat = 71.5
 min_lon = -180.0
 max_lon = -64.0
 label = "United States plausibility envelope (CONUS + AK + HI)"
+
+
+# ===========================================================================
+# Phase 4 -- geospatial enrichment.
+#
+# Everything below is a NUMBER OR A NAME THAT A REVIEWER MIGHT WANT TO CHANGE
+# WITHOUT TOUCHING CODE: a projected CRS, a rejection threshold, a slice
+# boundary, a vintage. The code says *why* the choice exists (a comment at
+# every reprojection); this file says *which*. That split is the whole point --
+# `src/geo/snap.py` should not be the place you go to argue about 50 metres.
+# ===========================================================================
+
+[crs]
+# Storage and point-in-polygon: EPSG:4326. PIP is topological, not metric, so
+# it needs no projection at all -- see src/geo/census_join.py.
+storage = 4326
+# TIGER/Line ships NAD83 (EPSG:4269). At the precision of a crash coordinate
+# NAD83 and WGS84 differ by ~1 m, well inside the geocoding error of every
+# source here, but the reprojection is done explicitly anyway so the claim is
+# in the code rather than in a comment. See src/geo/reference.py.
+tiger = 4269
+# Any tri-state area or rate: NAD83 / CONUS Albers, equal-area. Nothing in
+# Phase 4 computes an area (block-group density uses TIGER's stored ALAND);
+# this is here because Phase 5 will.
+tristate = 5070
+# 3857 is for tiles. Never for distance, buffer, or area. The negative-control
+# test in tests/test_geo.py measures exactly how wrong it is at 39.3N.
+
+[crs.snap]
+# Projected CRS per jurisdiction for nearest-segment distance and linear
+# referencing. Maryland is a single state-plane zone (NAD83 / Maryland,
+# metres), so 26985 is unambiguous and correct county-wide.
+#
+# Texas is not: the state spans five state-plane zones. If a Texas county is
+# ever snapped, the zone must be the one that county sits in -- El Paso
+# (48141) is Texas Central, EPSG:32139 -- because a state-plane zone is only
+# honest within ~250 km of its central meridian. EPSG:3083 (Texas Albers) is
+# the statewide alternative and is what a multi-county Texas snap should use;
+# it is equal-area rather than conformal, which costs a little at the
+# metre-scale distances snapping cares about, so the zone wins for one county.
+MD = 26985
+TX = 32139
+TX_statewide = 3083
+FL = 26958
+
+[reference]
+# Reference data lives outside the repo (data/reference/, gitignored) and is
+# versioned BY HASH, not by a URL that says "latest". Every file's sha256,
+# server Last-Modified/ETag, byte count and download timestamp go in
+# data/reference/_reference_manifest.json and into the geo build manifest.
+tiger_year = 2025
+# FIPS for the three in-scope states. Order is the write order, so it is
+# fixed here rather than by a set iteration.
+state_fips = ["12", "24", "48"]
+# ACS vintage. 2023 5-year is the current release; the block-group tables are
+# only published in the 5-year product, which is the reason there is no
+# choice to make here.
+acs_year = 2023
+acs_dataset = "acs5"
+# Population only. B19013 (median household income), B25044 (vehicles by
+# tenure) and B08301 (means of transport to work) are deliberately NOT
+# fetched -- see the [acs] block below and ASSIGNMENT.md Part 4.
+acs_variable = "B01003_001E"
+# Census table-based Summary File: the keyless bulk route to the same
+# estimates, used when no API key is configured. Official Census, same
+# vintage, same table.
+acs_summary_file = "https://www2.census.gov/programs-surveys/acs/summary_file/{year}/table-based-SF/data/5YRData/acsdt5y{year}-{table}.dat"
+acs_table = "b01003"
+
+[reference.osm]
+# Geofabrik publishes `<state>-latest.osm.pbf`, which is not a reproducible
+# name: it 302s to a dated file and the bytes change nightly. The hash below
+# IS the version. A different hash is a restatement, not a warning.
+states = ["maryland"]
+# Filled in by the first `python -m src.geo.reference --fetch osm` and then
+# asserted on every later run. Empty means "not pinned yet".
+maryland_sha256 = "a138d4e83fdc3fd8e5a38a795430370e7c5944bf0644403069a811bdd6213212"
+maryland_last_modified = "Mon, 07 Sep 2026 02:35:00 GMT"
+maryland_url = "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf"
+
+[pip]
+# `within` excludes a point that lies exactly on a shared boundary from one of
+# the two polygons; `intersects` includes it in both and double-counts. Both
+# are wrong in a different direction, so the rule is: match with `intersects`
+# (never lose a point to a boundary), then de-duplicate deterministically by
+# the smallest GEOID. The count of rows that needed the tie-break is reported
+# -- if it is ever large, the TIGER layers are inconsistent and that is a
+# finding, not a tuning knob.
+predicate = "intersects"
+tiebreak = "min_geoid"
+
+[h3]
+# r9 (~0.10 km2, ~200 m edge) is the finest defensible grain for a crash
+# coordinate whose own positional error is tens of metres; r8 (~0.74 km2) is
+# the analysis grain the assignment names; r7 is the rollup. Stored finest and
+# derived upward with cell_to_parent, so the three are consistent by
+# construction rather than by three independent index calls.
+store_resolution = 9
+parent_resolutions = [8, 7]
+# The bucket the weather join uses. r5 cells are ~8.5 km edge, just under
+# ERA5's ~9 km grid, so one request per cell is one request per grid box.
+weather_resolution = 5
+
+[tz]
+# Zone of last resort per jurisdiction, used only when a row has neither a
+# usable coordinate nor a county whose zone can be derived from the data.
+# Maryland is entirely Eastern; Texas is overwhelmingly Central (El Paso and
+# Hudspeth are Mountain); Florida is overwhelmingly Eastern (the western
+# Panhandle is Central). Every use of these is flagged
+# tz_source = 'JURISDICTION_DEFAULT' and Phase 6 treats it as insufficient.
+[tz.jurisdiction_default]
+MD = "America/New_York"
+TX = "America/Chicago"
+FL = "America/New_York"
+
+[tz.expected_zones]
+# What a coordinate in each jurisdiction may legitimately resolve to. Anything
+# else is not a timezone problem, it is a COORDINATE problem: a crash whose
+# point falls in America/Matamoros is a crash whose longitude puts it across
+# the Rio Grande. The build counts these and warns; it does NOT correct them,
+# because the coordinate is the evidence and overwriting it would hide the
+# defect that the zone lookup just surfaced.
+MD = ["America/New_York"]
+TX = ["America/Chicago", "America/Denver"]
+FL = ["America/New_York", "America/Chicago"]
+
+[tz.dst]
+# Fall-back ambiguity: fold=0 picks the FIRST occurrence of the repeated wall
+# clock, i.e. the offset with DST still in effect. Spring-forward gap:
+# nonexistent local times are shifted FORWARD by the size of the gap.
+#
+# Both are defensible and neither is right: the source published a wall clock
+# that is either ambiguous or impossible, and no rule recovers the instant it
+# meant. What matters is that the row is FLAGGED (tz_ambiguous /
+# tz_gap_adjusted) so a downstream calling-window decision can refuse it,
+# rather than silently being an hour wrong.
+ambiguous_fold = 0
+gap_policy = "shift_forward"
+
+[snap]
+# Which source systems get a snap attempt. Montgomery only: the Maryland PBF
+# is 203 MB and covers the county completely; Texas would need the 683 MB
+# statewide extract for a 100k-row slice spread over 254 counties. Everything
+# not listed leaves this phase with snap_status = 'NOT_ATTEMPTED', which is a
+# recorded outcome, not a silent NULL.
+source_systems = ["MONTGOMERY_MD"]
+# Rejection threshold, in the projected CRS of [crs.snap]. Set from the
+# MEASURED distribution (see ai docs/implementation/phase4-geo-report.md),
+# not from taste. The assignment's "400 m is fiction" is the outer bound.
+max_distance_m = 50.0
+# Candidates are searched to this radius so the distribution above the
+# threshold can be REPORTED rather than merely truncated: a row at 120 m is
+# rejected, but we know it was 120 m and not 4 km.
+search_distance_m = 500.0
+# OSM `highway` values that count as a road a vehicle crash can happen on.
+# Footways, cycleways and steps are excluded: snapping a car crash to a
+# footpath 8 m away is a worse answer than snapping it to the carriageway
+# 30 m away, and the null rate it would produce for maxspeed/lanes would be
+# an artefact of the filter rather than of OSM tagging.
+highway_values = [
+  "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link",
+  "secondary", "secondary_link", "tertiary", "tertiary_link",
+  "unclassified", "residential", "living_street", "service", "road",
+]
+# Bounding box for the OSM clip, in EPSG:4326. The Montgomery envelope above
+# padded by a further 0.05 deg (~5.5 km) so a crash near the county line can
+# still snap to a road that continues into Howard or Frederick.
+clip_pad_deg = 0.05
+
+[weather]
+# Bounded slice: Montgomery County, 2024-01-01 onward. The reason is arithmetic,
+# not taste -- see the report. Open-Meteo's archive limits are 600 requests per
+# minute and 10,000 per day; one request per (H3 r5 cell, calendar year) over
+# this slice is ~30-90 calls. The unbounded version (all three jurisdictions,
+# 2015-2026) is a multi-day scheduled batch and the report says how to run it.
+source_systems = ["MONTGOMERY_MD"]
+start_date = 2024-01-01
+hourly = [
+  "temperature_2m", "precipitation", "rain", "snowfall",
+  "weather_code", "wind_speed_10m",
+]
+# Requested with timezone=UTC so the returned hourly index IS the UTC key the
+# join uses. Asking for local time here would reintroduce the localisation
+# problem the tz stage just solved.
+timezone = "UTC"
+max_requests_per_minute = 600
+max_requests_per_day = 10000
+# Client-side pace: <= 5 req/s, well inside 600/min, so a cold-cache run never
+# approaches the limit even without the server telling us to slow down.
+min_interval_s = 0.2
+
+[geoparquet]
+# Row-group size for the partitioned GeoParquet, MEASURED rather than guessed
+# (the table is in ai docs/implementation/phase4-geo-report.md; reproduce it
+# with the script named there).
+#
+# The bbox covering column prunes at ROW-GROUP granularity, so the size has to
+# be small enough that a partition holds more than one group. A real partition
+# here (jurisdiction=MD/year=2024) is 11,141 rows: at Phase 3's columnar 122,880
+# that is ONE row group, the covering column can never skip anything, and it
+# still costs four doubles per row. 4,096 gives three groups per partition
+# today for +0.8% bytes, and at the assignment's 10x volume a partition is
+# ~110k rows / 27 groups, where the measured pruning (66% of row groups skipped
+# on a corridor-sized box, 0% with an unsorted file) becomes real.
+row_group_size = 4096
+# The single-file copy keeps the columnar row-group size, because nothing
+# prunes spatially on a file that is read whole.
+flat_row_group_size = 122880
+compression = "zstd"
