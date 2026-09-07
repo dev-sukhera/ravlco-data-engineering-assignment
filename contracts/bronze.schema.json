@@ -1,0 +1,742 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/bronze.schema.json",
+  "title": "Bronze Layer Contract v1.0.0",
+  "description": "Bronze is all-VARCHAR by design. Every column arrives as the characters the\nsource wrote: no cast, no null coercion, no sentinel handling. A bronze layer\nthat casts is a bronze layer that has already lost data -- and the four\nknown-defect tests need to FAIL on bronze, which they cannot do if bronze has\nalready fixed the defect.\n\nThe _bronze_* provenance block is NOT uniform across sources, and the contract\nsays so rather than pretending. The HTTP sources (Montgomery, TxDOT) write six:\n_bronze_source, _bronze_dataset, _bronze_load_ts, _bronze_page, _bronze_raw_path\nand _bronze_row_sha256, because their unit of raw preservation is a page and\neach row's provenance is a row hash inside it. FARS writes five --\n_bronze_source, _bronze_dataset, _bronze_load_ts, _bronze_member and\n_bronze_zip_sha256 -- because its unit of raw preservation is the annual ZIP,\nand a per-row hash inside a file that is restated wholesale would be provenance\ntheatre. Requiring all six everywhere would fail every FARS page for a\ndifference that is correct.\n\n`_bronze_dataset` carries the Socrata dataset id for Montgomery, the layer name\nfor TxDOT and THE YEAR for FARS. That last one is load-bearing: neither the FARS\nvehicle nor the person file publishes a YEAR column, and ST_CASE restarts every\nyear, so without _bronze_dataset their natural keys would collide across six\nyears and silently merge unrelated records.",
+  "tables": {
+    "montgomery.bhju-22kf": {
+      "title": "Montgomery County Incidents, raw",
+      "description": "One row per crash per bronze partition. Overlapping partitions are expected and are what silver's SCD2 dedupes; report_number is therefore NOT unique across a multi-partition read, only within one. `:id` is Socrata's row identity.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-column-order-is-contract": false,
+      "required": [
+        "report_number",
+        "crash_date_time",
+        "latitude",
+        "longitude",
+        "acrs_report_type",
+        "driver_substance_abuse",
+        ":id",
+        ":updated_at",
+        ":created_at",
+        "_bronze_source",
+        "_bronze_dataset",
+        "_bronze_load_ts",
+        "_bronze_page",
+        "_bronze_raw_path",
+        "_bronze_row_sha256"
+      ],
+      "properties": {
+        "report_number": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crash_date_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latitude": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "String, always populated: zero nulls and zero zeroes in 132,190 rows. A null check passes and the row can still be 170 km outside the county -- which is the point of the defect."
+        },
+        "longitude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "acrs_report_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driver_substance_abuse": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The crash-level `, `-joined concatenation of every driver's value: 121 distinct strings mixing both dictionary generations."
+        },
+        ":id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        ":updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        ":created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_bronze_source": {
+          "type": "string",
+          "description": "Ingest source key: montgomery | txdot | fars."
+        },
+        "_bronze_dataset": {
+          "type": "string",
+          "description": "Socrata dataset id, TxDOT layer name, or FARS year."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Partition stamp, millisecond UTC, lexically sortable."
+        },
+        "_bronze_page": {
+          "type": "string",
+          "description": "Page number within the partition."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "The raw response file this row was parsed from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Canonical hash of the source row; what silver's SCD2 diffs restatements on."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [],
+        "foreign_keys": [],
+        "row_count_min": 1
+      }
+    },
+    "montgomery.mmzv-x632": {
+      "title": "Montgomery County Drivers, raw",
+      "description": "One row per driver per bronze partition. Carries denormalised crash-level attributes (weather, light, lat/long), so aggregating those off this table overcounts multi-vehicle crashes by ~1.87x before dedupe and ~1.77x after.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-column-order-is-contract": false,
+      "required": [
+        "report_number",
+        "person_id",
+        "crash_date_time",
+        "latitude",
+        "longitude",
+        "injury_severity",
+        "driver_substance_abuse",
+        ":id",
+        ":updated_at",
+        ":created_at",
+        "_bronze_source",
+        "_bronze_dataset",
+        "_bronze_load_ts",
+        "_bronze_page",
+        "_bronze_raw_path",
+        "_bronze_row_sha256"
+      ],
+      "properties": {
+        "report_number": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "person_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crash_date_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latitude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "longitude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "injury_severity": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Also re-cased by the 2024 dictionary generation change: 11 distinct values across both cases, including SQL NULL."
+        },
+        "driver_substance_abuse": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Single-valued at THIS grain: one driver, one value. 21 distinct across both dictionary generations."
+        },
+        ":id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        ":updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        ":created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_bronze_source": {
+          "type": "string",
+          "description": "Ingest source key: montgomery | txdot | fars."
+        },
+        "_bronze_dataset": {
+          "type": "string",
+          "description": "Socrata dataset id, TxDOT layer name, or FARS year."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Partition stamp, millisecond UTC, lexically sortable."
+        },
+        "_bronze_page": {
+          "type": "string",
+          "description": "Page number within the partition."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "The raw response file this row was parsed from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Canonical hash of the source row; what silver's SCD2 diffs restatements on."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [],
+        "foreign_keys": [],
+        "row_count_min": 1
+      }
+    },
+    "montgomery.n7fk-dce5": {
+      "title": "Montgomery County Non-Motorists, raw",
+      "description": "One row per non-motorist per bronze partition. person_id is NOT unique: 9 ids appear twice under one report_number, distinguished only by `:id` and disagreeing on a denormalised crash-level field.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-column-order-is-contract": false,
+      "required": [
+        "report_number",
+        "person_id",
+        "crash_date_time",
+        "injury_severity",
+        "non_motorist_substance_abuse",
+        ":id",
+        ":updated_at",
+        "_bronze_source",
+        "_bronze_dataset",
+        "_bronze_load_ts",
+        "_bronze_page",
+        "_bronze_raw_path",
+        "_bronze_row_sha256"
+      ],
+      "properties": {
+        "report_number": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "person_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crash_date_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "injury_severity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "non_motorist_substance_abuse": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        ":id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        ":updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_bronze_source": {
+          "type": "string",
+          "description": "Ingest source key: montgomery | txdot | fars."
+        },
+        "_bronze_dataset": {
+          "type": "string",
+          "description": "Socrata dataset id, TxDOT layer name, or FARS year."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Partition stamp, millisecond UTC, lexically sortable."
+        },
+        "_bronze_page": {
+          "type": "string",
+          "description": "Page number within the partition."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "The raw response file this row was parsed from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Canonical hash of the source row; what silver's SCD2 diffs restatements on."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [],
+        "foreign_keys": [],
+        "row_count_min": 1
+      }
+    },
+    "txdot.cris_crash": {
+      "title": "TxDOT CRIS crash, raw",
+      "description": "One row per crash per bronze partition, from an ArcGIS FeatureServer. All attributes are strings including the dates (esriFieldTypeString). Geometry is preserved in its native wkid 3081; reprojection is a transformation and belongs in silver.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-column-order-is-contract": false,
+      "required": [
+        "crash_id",
+        "crash_date",
+        "crash_time",
+        "latitude",
+        "longitude",
+        "rpt_latitude",
+        "rpt_longitude",
+        "located_fl",
+        "amend_supp_fl",
+        "crash_sev_id",
+        "cnty_id",
+        "ESRI_OID",
+        "_geometry_x",
+        "_geometry_y",
+        "_geometry_wkid",
+        "_bronze_source",
+        "_bronze_dataset",
+        "_bronze_load_ts",
+        "_bronze_page",
+        "_bronze_raw_path",
+        "_bronze_row_sha256"
+      ],
+      "properties": {
+        "crash_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crash_date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crash_time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latitude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "longitude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rpt_latitude": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Officer-reported. Null for 68,932 of the 91,876 rows that have a CRIS-derived pair."
+        },
+        "rpt_longitude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "located_fl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "amend_supp_fl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "'1' on 5,936 of 100,000 rows. Late amendment is a first-class concept here, which is why silver is SCD2 and not append."
+        },
+        "crash_sev_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cnty_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ESRI_OID": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Service-assigned, NOT a TxDOT key. A layer rebuild reshuffles it; crash_id is the natural key silver diffs on."
+        },
+        "_geometry_x": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_geometry_y": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_geometry_wkid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_bronze_source": {
+          "type": "string",
+          "description": "Ingest source key: montgomery | txdot | fars."
+        },
+        "_bronze_dataset": {
+          "type": "string",
+          "description": "Socrata dataset id, TxDOT layer name, or FARS year."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Partition stamp, millisecond UTC, lexically sortable."
+        },
+        "_bronze_page": {
+          "type": "string",
+          "description": "Page number within the partition."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "The raw response file this row was parsed from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Canonical hash of the source row; what silver's SCD2 diffs restatements on."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [],
+        "foreign_keys": [],
+        "row_count_min": 1
+      }
+    },
+    "fars.accident": {
+      "title": "FARS accident, raw",
+      "description": "One row per (year, ST_CASE) per bronze partition. Column set differs by year -- 96 columns in 2019, 85 in 2024 -- so every read must union by name. Sentinel values are preserved verbatim, including the year-to-year decimal formatting drift (77.7777 in 2019, 77.77770000 in 2024) that defeats string matching.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-column-order-is-contract": false,
+      "required": [
+        "STATE",
+        "ST_CASE",
+        "YEAR",
+        "MONTH",
+        "DAY",
+        "HOUR",
+        "MINUTE",
+        "LATITUDE",
+        "LONGITUD",
+        "FATALS",
+        "_bronze_source",
+        "_bronze_dataset",
+        "_bronze_load_ts",
+        "_bronze_member",
+        "_bronze_zip_sha256"
+      ],
+      "properties": {
+        "STATE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ST_CASE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "YEAR": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "MONTH": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "DAY": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "HOUR": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "MINUTE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "LATITUDE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "LONGITUD": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "FATALS": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_bronze_source": {
+          "type": "string",
+          "description": "Ingest source key: fars."
+        },
+        "_bronze_dataset": {
+          "type": "string",
+          "description": "The FARS year. The ONLY place the year appears for the vehicle and person members."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Partition stamp, millisecond UTC."
+        },
+        "_bronze_member": {
+          "type": "string",
+          "description": "The member name inside the annual ZIP."
+        },
+        "_bronze_zip_sha256": {
+          "type": "string",
+          "description": "SHA-256 of the whole annual ZIP. FARS is restated wholesale, so the zip hash IS the row's provenance."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [],
+        "foreign_keys": [],
+        "row_count_min": 1
+      }
+    },
+    "fars.vehicle": {
+      "title": "FARS vehicle, raw",
+      "description": "One row per (year, ST_CASE, VEH_NO). NOTE: no YEAR column. The year is only in _bronze_dataset.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-column-order-is-contract": false,
+      "required": [
+        "STATE",
+        "ST_CASE",
+        "VEH_NO",
+        "_bronze_source",
+        "_bronze_dataset",
+        "_bronze_load_ts",
+        "_bronze_member",
+        "_bronze_zip_sha256"
+      ],
+      "properties": {
+        "STATE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ST_CASE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "VEH_NO": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_bronze_source": {
+          "type": "string",
+          "description": "Ingest source key: fars."
+        },
+        "_bronze_dataset": {
+          "type": "string",
+          "description": "The FARS year. The ONLY place the year appears for the vehicle and person members."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Partition stamp, millisecond UTC."
+        },
+        "_bronze_member": {
+          "type": "string",
+          "description": "The member name inside the annual ZIP."
+        },
+        "_bronze_zip_sha256": {
+          "type": "string",
+          "description": "SHA-256 of the whole annual ZIP. FARS is restated wholesale, so the zip hash IS the row's provenance."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [],
+        "foreign_keys": [],
+        "row_count_min": 1
+      }
+    },
+    "fars.person": {
+      "title": "FARS person, raw",
+      "description": "One row per (year, ST_CASE, VEH_NO, PER_NO). NOTE: no YEAR column. INJ_SEV carries three different kinds of not-a-severity: 5 injured-severity-unknown, 6 died-prior-to-crash, 9 unknown.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-column-order-is-contract": false,
+      "required": [
+        "STATE",
+        "ST_CASE",
+        "VEH_NO",
+        "PER_NO",
+        "INJ_SEV",
+        "AGE",
+        "_bronze_source",
+        "_bronze_dataset",
+        "_bronze_load_ts",
+        "_bronze_member",
+        "_bronze_zip_sha256"
+      ],
+      "properties": {
+        "STATE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ST_CASE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "VEH_NO": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "PER_NO": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "INJ_SEV": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "AGE": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "_bronze_source": {
+          "type": "string",
+          "description": "Ingest source key: fars."
+        },
+        "_bronze_dataset": {
+          "type": "string",
+          "description": "The FARS year. The ONLY place the year appears for the vehicle and person members."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Partition stamp, millisecond UTC."
+        },
+        "_bronze_member": {
+          "type": "string",
+          "description": "The member name inside the annual ZIP."
+        },
+        "_bronze_zip_sha256": {
+          "type": "string",
+          "description": "SHA-256 of the whole annual ZIP. FARS is restated wholesale, so the zip hash IS the row's provenance."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [],
+        "foreign_keys": [],
+        "row_count_min": 1
+      }
+    }
+  }
+}

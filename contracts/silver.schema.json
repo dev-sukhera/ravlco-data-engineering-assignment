@@ -1,0 +1,2366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/silver.schema.json",
+  "title": "Silver Layer Contract v1.0.0",
+  "description": "Typed, defect-handled, versioned per-source tables. Each entry under `tables` describes ONE ROW of that table. Same dialect as contracts/lead_output.schema.json.\n\nJSON Schema cannot express grain, referential expectations or a row-count floor, so each table also carries `x-table-constraints`:\n  unique_keys   the grain, enforced on the _current slice\n  foreign_keys  with optional orphans_allowed_when naming the boolean column that licenses a legitimately missing parent\n  row_count_min a floor, so an empty build fails loudly\n\nColumn ORDER is part of this contract (x-column-order-is-contract). Silver must be byte-identical across rebuilds, and the writer emits the contract's order; a reordered contract has to fail loudly rather than silently rewriting every file with new bytes and identical content.\n\nEnforced by src/contracts.py: types via DESCRIBE, everything else via generated SQL, all violations collected before raising. python -m src.transform.build validates every table BEFORE renaming any .part file into place -- a contract failure leaves the previous silver exactly as it was.",
+  "tables": {
+    "montgomery.crash": {
+      "title": "Montgomery County crash (Incidents, bhju-22kf)",
+      "description": "One row per crash per version. Natural key report_number. SCD2 delta mode: deletions are NOT observable through keyset incremental ingest, so deleted_in_load_ts is always NULL here.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "natural_key",
+        "report_number",
+        "local_case_number",
+        "agency_name",
+        "acrs_report_type",
+        "crash_datetime_local",
+        "crash_date",
+        "lat_raw",
+        "lon_raw",
+        "geo_quality",
+        "distance_from_envelope_m",
+        "collision_type",
+        "weather",
+        "light",
+        "first_harmful_event",
+        "at_fault",
+        "source_updated_at_utc",
+        "source_created_at_utc",
+        "source_version",
+        "socrata_id",
+        "driver_row_count",
+        "non_motorist_row_count",
+        "has_driver_rows",
+        "has_non_motorist_rows",
+        "max_party_severity_ordinal",
+        "severity_ordinal",
+        "severity_grain",
+        "any_driver_alcohol_suspected",
+        "any_driver_drug_suspected",
+        "driver_substance_scheme",
+        "incident_string_scheme",
+        "incident_string_party_count",
+        "incident_string_matches_driver_rows",
+        "incident_string_matches_driver_distinct",
+        "row_hash",
+        "valid_from",
+        "is_current",
+        "version_no",
+        "_bronze_load_ts",
+        "_bronze_row_sha256",
+        "_bronze_raw_path"
+      ],
+      "properties": {
+        "natural_key": {
+          "type": "string"
+        },
+        "report_number": {
+          "type": "string"
+        },
+        "local_case_number": {
+          "type": "string"
+        },
+        "agency_name": {
+          "type": "string"
+        },
+        "acrs_report_type": {
+          "type": "string"
+        },
+        "crash_datetime_local": {
+          "type": "timestamp",
+          "description": "Naive local wall clock exactly as published. NOT localised to UTC: that needs the coordinate-derived IANA zone and is Phase 4."
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected. NOT range-checked -- that is the point: an out-of-envelope or sentinel coordinate survives here so the defect stays auditable."
+        },
+        "lon_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected."
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "distance_from_envelope_m": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Geodesic metres from the nearest edge of the configured envelope (WGS84 ellipsoid, pyproj.Geod). 0 inside."
+        },
+        "hit_run": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "route_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "road_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cross_street_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "road_grade": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "road_condition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "road_alignment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "road_division": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "number_of_lanes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "number_of_lanes_raw": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The unparsed string. 3,830 incident rows carry a comma-joined value like '2, 3' where the crash spans two roadway segments; number_of_lanes is NULL for those."
+        },
+        "lane_direction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lane_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "direction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "distance": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "distance_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collision_type": {
+          "type": "string"
+        },
+        "weather": {
+          "type": "string"
+        },
+        "surface_condition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "light": {
+          "type": "string"
+        },
+        "traffic_control": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "junction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "intersection_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "first_harmful_event": {
+          "type": "string"
+        },
+        "second_harmful_event": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "at_fault": {
+          "type": "string"
+        },
+        "municipality": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "off_road_description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "related_non_motorist": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driver_substance_abuse_raw": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "non_motorist_substance_abuse_raw": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_updated_at_utc": {
+          "type": "timestamp",
+          "description": "Socrata :updated_at as naive-UTC TIMESTAMP. 125,005 incident rows share 2024-06-12T20:28:27.326 from a bulk reload."
+        },
+        "source_created_at_utc": {
+          "type": "timestamp"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "socrata_id": {
+          "type": "string"
+        },
+        "driver_row_count": {
+          "type": "integer"
+        },
+        "non_motorist_row_count": {
+          "type": "integer"
+        },
+        "has_driver_rows": {
+          "type": "boolean"
+        },
+        "has_non_motorist_rows": {
+          "type": "boolean"
+        },
+        "max_party_severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "The single harmonised scale. 0 unknown, 1 no apparent injury (O), 2 possible (C), 3 suspected minor (B), 4 suspected serious (A), 5 fatal (K). See config/severity_crosswalk.csv."
+        },
+        "severity_source_value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity_grain": {
+          "type": "string",
+          "enum": [
+            "MAX_OVER_PARTIES",
+            "CRASH_REPORT_TYPE",
+            "SOURCE_CRASH_LEVEL",
+            "FATALITY_CENSUS"
+          ],
+          "description": "Which rule produced severity_ordinal, so a max-over-parties is never mistaken for a source-published crash severity."
+        },
+        "any_driver_alcohol_suspected": {
+          "type": "boolean"
+        },
+        "any_driver_drug_suspected": {
+          "type": "boolean"
+        },
+        "driver_substance_scheme": {
+          "type": "string",
+          "enum": [
+            "OLD_SINGLE",
+            "NEW_PAIR",
+            "NULL",
+            "MIXED",
+            "UNMAPPED"
+          ]
+        },
+        "incident_string_scheme": {
+          "type": "string"
+        },
+        "incident_string_party_count": {
+          "type": "integer"
+        },
+        "incident_string_matches_driver_rows": {
+          "type": "boolean",
+          "description": "The crash-level substance concatenation recovered exactly driver_row_count parties. TRUE for 100% of NEW_PAIR crashes."
+        },
+        "incident_string_matches_driver_distinct": {
+          "type": "boolean",
+          "description": "It recovered exactly the count of DISTINCT driver values. TRUE for 100% of OLD_SINGLE crashes -- the old dictionary generation de-duplicates before joining."
+        },
+        "substance_crosscheck_agrees": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "The Incidents concatenation and the Drivers rollup agree on both suspicion flags. NULL where the crash has no driver rows."
+        },
+        "row_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "md5 over the CONFORMED attribute columns only -- not over _bronze_* metadata, so a re-ingest under a new load_ts does not manufacture a version."
+        },
+        "valid_from": {
+          "type": "string",
+          "description": "Source mutation stamp where one exists (Montgomery :updated_at), else the bronze _bronze_load_ts that first carried this row hash. Never now(): silver is a pure function of bronze."
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The next version's valid_from. NULL on the current version."
+        },
+        "is_current": {
+          "type": "boolean",
+          "description": "Exactly one TRUE per natural_key, enforced by the unique key on the _current tables."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted_in_load_ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot load_ts in which this key was first absent from its own scope. Always NULL for Montgomery -- deletions are not observable through keyset incremental ingest."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Lineage: the bronze row hash (Montgomery/TxDOT) or the annual zip hash (FARS, whose unit of raw preservation is the zip, not a page)."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "Lineage: the raw payload file (Montgomery/TxDOT) or the zip member (FARS)."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "report_number"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 100000
+      }
+    },
+    "montgomery.driver": {
+      "title": "Montgomery County driver (mmzv-x632)",
+      "description": "One row per driver per version. Natural key person_id; report_number is the crash FK. 1.77 current rows per report_number -- aggregating crash-level fields off this table overcounts multi-vehicle crashes.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "natural_key",
+        "person_id",
+        "report_number",
+        "crash_datetime_local",
+        "crash_date",
+        "lat_raw",
+        "lon_raw",
+        "geo_quality",
+        "severity_ordinal",
+        "substance_raw",
+        "substance_scheme",
+        "alcohol_status",
+        "drug_status",
+        "source_updated_at_utc",
+        "source_created_at_utc",
+        "source_version",
+        "socrata_id",
+        "driver_at_fault",
+        "driverless_vehicle",
+        "vehicle_id",
+        "vehicle_year",
+        "vehicle_damage_extent",
+        "speed_limit",
+        "row_hash",
+        "valid_from",
+        "is_current",
+        "version_no",
+        "_bronze_load_ts",
+        "_bronze_row_sha256",
+        "_bronze_raw_path"
+      ],
+      "properties": {
+        "natural_key": {
+          "type": "string"
+        },
+        "person_id": {
+          "type": "string"
+        },
+        "report_number": {
+          "type": "string"
+        },
+        "crash_datetime_local": {
+          "type": "timestamp",
+          "description": "Naive local wall clock exactly as published. NOT localised to UTC: that needs the coordinate-derived IANA zone and is Phase 4."
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected. NOT range-checked -- that is the point: an out-of-envelope or sentinel coordinate survives here so the defect stays auditable."
+        },
+        "lon_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected."
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "injury_severity_raw": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "injury_severity_norm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "The single harmonised scale. 0 unknown, 1 no apparent injury (O), 2 possible (C), 3 suspected minor (B), 4 suspected serious (A), 5 fatal (K). See config/severity_crosswalk.csv."
+        },
+        "severity_kabco": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "K",
+            "A",
+            "B",
+            "C",
+            "O"
+          ]
+        },
+        "substance_raw": {
+          "type": "string"
+        },
+        "substance_scheme": {
+          "type": "string",
+          "enum": [
+            "OLD_SINGLE",
+            "NEW_PAIR",
+            "NULL",
+            "MIXED",
+            "UNMAPPED"
+          ]
+        },
+        "alcohol_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "UNMAPPED"
+          ]
+        },
+        "drug_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "UNMAPPED"
+          ]
+        },
+        "substance_detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_updated_at_utc": {
+          "type": "timestamp",
+          "description": "Socrata :updated_at as naive-UTC TIMESTAMP. 125,005 incident rows share 2024-06-12T20:28:27.326 from a bulk reload."
+        },
+        "source_created_at_utc": {
+          "type": "timestamp"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "socrata_id": {
+          "type": "string"
+        },
+        "driver_at_fault": {
+          "type": "boolean"
+        },
+        "driverless_vehicle": {
+          "type": "boolean"
+        },
+        "parked_vehicle": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "driver_distracted_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "drivers_license_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "circumstance": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_id": {
+          "type": "string"
+        },
+        "vehicle_year": {
+          "type": "integer"
+        },
+        "vehicle_make": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_body_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_movement": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_going_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vehicle_damage_extent": {
+          "type": "string"
+        },
+        "vehicle_first_impact_location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "speed_limit": {
+          "type": "integer"
+        },
+        "row_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "md5 over the CONFORMED attribute columns only -- not over _bronze_* metadata, so a re-ingest under a new load_ts does not manufacture a version."
+        },
+        "valid_from": {
+          "type": "string",
+          "description": "Source mutation stamp where one exists (Montgomery :updated_at), else the bronze _bronze_load_ts that first carried this row hash. Never now(): silver is a pure function of bronze."
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The next version's valid_from. NULL on the current version."
+        },
+        "is_current": {
+          "type": "boolean",
+          "description": "Exactly one TRUE per natural_key, enforced by the unique key on the _current tables."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted_in_load_ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot load_ts in which this key was first absent from its own scope. Always NULL for Montgomery -- deletions are not observable through keyset incremental ingest."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Lineage: the bronze row hash (Montgomery/TxDOT) or the annual zip hash (FARS, whose unit of raw preservation is the zip, not a page)."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "Lineage: the raw payload file (Montgomery/TxDOT) or the zip member (FARS)."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "person_id"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "report_number"
+            ],
+            "references": {
+              "table": "montgomery.crash",
+              "columns": [
+                "report_number"
+              ]
+            },
+            "description": "Every driver's crash exists: 0 orphans measured in both bronze and silver."
+          }
+        ],
+        "row_count_min": 150000
+      }
+    },
+    "montgomery.non_motorist": {
+      "title": "Montgomery County non-motorist (n7fk-dce5)",
+      "description": "One row per non-motorist per version. Natural key person_id, after resolving the 9 person_ids the source publishes twice.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "natural_key",
+        "person_id",
+        "report_number",
+        "crash_datetime_local",
+        "crash_date",
+        "lat_raw",
+        "lon_raw",
+        "geo_quality",
+        "injury_severity_raw",
+        "injury_severity_norm",
+        "severity_ordinal",
+        "severity_kabco",
+        "substance_raw",
+        "substance_scheme",
+        "alcohol_status",
+        "drug_status",
+        "source_updated_at_utc",
+        "source_created_at_utc",
+        "source_version",
+        "socrata_id",
+        "pedestrian_type",
+        "pedestrian_movement",
+        "pedestrian_actions",
+        "pedestrian_location",
+        "safety_equipment",
+        "duplicate_person_id",
+        "row_hash",
+        "valid_from",
+        "is_current",
+        "version_no",
+        "_bronze_load_ts",
+        "_bronze_row_sha256",
+        "_bronze_raw_path"
+      ],
+      "properties": {
+        "natural_key": {
+          "type": "string"
+        },
+        "person_id": {
+          "type": "string"
+        },
+        "report_number": {
+          "type": "string"
+        },
+        "crash_datetime_local": {
+          "type": "timestamp",
+          "description": "Naive local wall clock exactly as published. NOT localised to UTC: that needs the coordinate-derived IANA zone and is Phase 4."
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected. NOT range-checked -- that is the point: an out-of-envelope or sentinel coordinate survives here so the defect stays auditable."
+        },
+        "lon_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected."
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "injury_severity_raw": {
+          "type": "string"
+        },
+        "injury_severity_norm": {
+          "type": "string"
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "The single harmonised scale. 0 unknown, 1 no apparent injury (O), 2 possible (C), 3 suspected minor (B), 4 suspected serious (A), 5 fatal (K). See config/severity_crosswalk.csv."
+        },
+        "severity_kabco": {
+          "type": "string",
+          "enum": [
+            "K",
+            "A",
+            "B",
+            "C",
+            "O"
+          ]
+        },
+        "substance_raw": {
+          "type": "string"
+        },
+        "substance_scheme": {
+          "type": "string",
+          "enum": [
+            "OLD_SINGLE",
+            "NEW_PAIR",
+            "NULL",
+            "MIXED",
+            "UNMAPPED"
+          ]
+        },
+        "alcohol_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "UNMAPPED"
+          ]
+        },
+        "drug_status": {
+          "type": "string",
+          "enum": [
+            "NOT_SUSPECTED",
+            "SUSPECTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "UNMAPPED"
+          ]
+        },
+        "substance_detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_updated_at_utc": {
+          "type": "timestamp",
+          "description": "Socrata :updated_at as naive-UTC TIMESTAMP. 125,005 incident rows share 2024-06-12T20:28:27.326 from a bulk reload."
+        },
+        "source_created_at_utc": {
+          "type": "timestamp"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "socrata_id": {
+          "type": "string"
+        },
+        "pedestrian_type": {
+          "type": "string"
+        },
+        "pedestrian_movement": {
+          "type": "string"
+        },
+        "pedestrian_actions": {
+          "type": "string"
+        },
+        "pedestrian_location": {
+          "type": "string"
+        },
+        "safety_equipment": {
+          "type": "string"
+        },
+        "at_fault": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duplicate_person_id": {
+          "type": "boolean",
+          "description": "This person_id appeared more than once in one bronze partition. 9 non-motorists locally, disagreeing on a denormalised crash-level field; resolved by taking the greatest :id."
+        },
+        "row_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "md5 over the CONFORMED attribute columns only -- not over _bronze_* metadata, so a re-ingest under a new load_ts does not manufacture a version."
+        },
+        "valid_from": {
+          "type": "string",
+          "description": "Source mutation stamp where one exists (Montgomery :updated_at), else the bronze _bronze_load_ts that first carried this row hash. Never now(): silver is a pure function of bronze."
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The next version's valid_from. NULL on the current version."
+        },
+        "is_current": {
+          "type": "boolean",
+          "description": "Exactly one TRUE per natural_key, enforced by the unique key on the _current tables."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted_in_load_ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot load_ts in which this key was first absent from its own scope. Always NULL for Montgomery -- deletions are not observable through keyset incremental ingest."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Lineage: the bronze row hash (Montgomery/TxDOT) or the annual zip hash (FARS, whose unit of raw preservation is the zip, not a page)."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "Lineage: the raw payload file (Montgomery/TxDOT) or the zip member (FARS)."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "person_id"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "report_number"
+            ],
+            "references": {
+              "table": "montgomery.crash",
+              "columns": [
+                "report_number"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 5000
+      }
+    },
+    "txdot.crash": {
+      "title": "TxDOT CRIS crash",
+      "description": "One row per crash per version. Natural key crash_id, NOT ESRI_OID (service-assigned). SCD2 snapshot mode scoped to the OID range the ingest cursor says was actually swept.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "natural_key",
+        "crash_id",
+        "crash_datetime_local",
+        "crash_date",
+        "crash_time_local",
+        "report_date",
+        "coord_source",
+        "geo_quality",
+        "located_fl",
+        "is_amended",
+        "crash_sev_id",
+        "severity_ordinal",
+        "crash_fatal_fl",
+        "death_cnt",
+        "sus_serious_injry_cnt",
+        "nonincap_injry_cnt",
+        "poss_injry_cnt",
+        "non_injry_cnt",
+        "unkn_injry_cnt",
+        "tot_injry_cnt",
+        "cnty_id",
+        "county_fips",
+        "city_id",
+        "rpt_city_id",
+        "onsys_fl",
+        "rural_fl",
+        "txdot_rptable_fl",
+        "crash_speed_limit",
+        "wthr_cond_id",
+        "light_cond_id",
+        "surf_cond_id",
+        "traffic_cntl_id",
+        "road_cls_id",
+        "road_algn_id",
+        "harm_evnt_id",
+        "fhe_collsn_id",
+        "obj_struck_id",
+        "intrsct_relat_id",
+        "at_intrsct_fl",
+        "road_constr_zone_fl",
+        "active_school_zone_fl",
+        "toll_road_fl",
+        "private_dr_fl",
+        "bicyclist_involved_fl",
+        "pedestrian_involved_fl",
+        "motorcyclist_involved_fl",
+        "large_truck_involved_fl",
+        "motor_vehicle_involved_fl",
+        "cmv_involv_fl",
+        "schl_bus_fl",
+        "rr_relat_fl",
+        "esri_oid",
+        "row_hash",
+        "valid_from",
+        "is_current",
+        "version_no",
+        "_bronze_load_ts",
+        "_bronze_row_sha256",
+        "_bronze_raw_path"
+      ],
+      "properties": {
+        "natural_key": {
+          "type": "string"
+        },
+        "crash_id": {
+          "type": "string"
+        },
+        "crash_datetime_local": {
+          "type": "timestamp",
+          "description": "Naive local wall clock exactly as published. NOT localised to UTC: that needs the coordinate-derived IANA zone and is Phase 4."
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "crash_time_local": {
+          "type": "time"
+        },
+        "report_date": {
+          "type": "date"
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat_raw": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Raw source value, kept even when rejected. NOT range-checked -- that is the point: an out-of-envelope or sentinel coordinate survives here so the defect stays auditable."
+        },
+        "lon_raw": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Raw source value, kept even when rejected."
+        },
+        "rpt_lat_raw": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rpt_lon_raw": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "geom_lat_3081_reproj": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "geom_lon_3081_reproj": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "coord_source": {
+          "type": "string",
+          "enum": [
+            "CRIS_DERIVED",
+            "OFFICER_REPORTED",
+            "NONE"
+          ]
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "coord_pairs_disagree": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "located_fl": {
+          "type": "boolean"
+        },
+        "is_amended": {
+          "type": "boolean",
+          "description": "TxDOT amend_supp_fl. NULL for Montgomery and FARS, which publish no per-record amendment flag -- NULL means 'this source does not say', never 'no'."
+        },
+        "crash_sev_id": {
+          "type": "integer"
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "The single harmonised scale. 0 unknown, 1 no apparent injury (O), 2 possible (C), 3 suspected minor (B), 4 suspected serious (A), 5 fatal (K). See config/severity_crosswalk.csv."
+        },
+        "severity_kabco": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "K",
+            "A",
+            "B",
+            "C",
+            "O"
+          ]
+        },
+        "crash_fatal_fl": {
+          "type": "boolean"
+        },
+        "death_cnt": {
+          "type": "integer"
+        },
+        "sus_serious_injry_cnt": {
+          "type": "integer"
+        },
+        "nonincap_injry_cnt": {
+          "type": "integer"
+        },
+        "poss_injry_cnt": {
+          "type": "integer"
+        },
+        "non_injry_cnt": {
+          "type": "integer"
+        },
+        "unkn_injry_cnt": {
+          "type": "integer"
+        },
+        "tot_injry_cnt": {
+          "type": "integer"
+        },
+        "cnty_id": {
+          "type": "integer"
+        },
+        "county_fips": {
+          "type": "string",
+          "pattern": "^[0-9]{3}$"
+        },
+        "city_id": {
+          "type": "integer"
+        },
+        "rpt_city_id": {
+          "type": "integer"
+        },
+        "street_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rpt_street_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rpt_block_num": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hwy_sys": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hwy_nbr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "onsys_fl": {
+          "type": "boolean"
+        },
+        "rural_fl": {
+          "type": "boolean"
+        },
+        "txdot_rptable_fl": {
+          "type": "boolean"
+        },
+        "day_of_week": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "crash_speed_limit": {
+          "type": "integer"
+        },
+        "nbr_of_lane": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "wthr_cond_id": {
+          "type": "integer"
+        },
+        "light_cond_id": {
+          "type": "integer"
+        },
+        "surf_cond_id": {
+          "type": "integer"
+        },
+        "traffic_cntl_id": {
+          "type": "integer"
+        },
+        "road_cls_id": {
+          "type": "integer"
+        },
+        "road_algn_id": {
+          "type": "integer"
+        },
+        "harm_evnt_id": {
+          "type": "integer"
+        },
+        "fhe_collsn_id": {
+          "type": "integer"
+        },
+        "obj_struck_id": {
+          "type": "integer"
+        },
+        "intrsct_relat_id": {
+          "type": "integer"
+        },
+        "at_intrsct_fl": {
+          "type": "boolean"
+        },
+        "road_constr_zone_fl": {
+          "type": "boolean"
+        },
+        "active_school_zone_fl": {
+          "type": "boolean"
+        },
+        "toll_road_fl": {
+          "type": "boolean"
+        },
+        "private_dr_fl": {
+          "type": "boolean"
+        },
+        "bicyclist_involved_fl": {
+          "type": "boolean"
+        },
+        "pedestrian_involved_fl": {
+          "type": "boolean"
+        },
+        "motorcyclist_involved_fl": {
+          "type": "boolean"
+        },
+        "large_truck_involved_fl": {
+          "type": "boolean"
+        },
+        "motor_vehicle_involved_fl": {
+          "type": "boolean"
+        },
+        "cmv_involv_fl": {
+          "type": "boolean"
+        },
+        "schl_bus_fl": {
+          "type": "boolean"
+        },
+        "rr_relat_fl": {
+          "type": "boolean"
+        },
+        "secondary_crash_fl": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "esri_oid": {
+          "type": "integer"
+        },
+        "row_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "md5 over the CONFORMED attribute columns only -- not over _bronze_* metadata, so a re-ingest under a new load_ts does not manufacture a version."
+        },
+        "valid_from": {
+          "type": "string",
+          "description": "Source mutation stamp where one exists (Montgomery :updated_at), else the bronze _bronze_load_ts that first carried this row hash. Never now(): silver is a pure function of bronze."
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The next version's valid_from. NULL on the current version."
+        },
+        "is_current": {
+          "type": "boolean",
+          "description": "Exactly one TRUE per natural_key, enforced by the unique key on the _current tables."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted_in_load_ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot load_ts in which this key was first absent from its own scope. Always NULL for Montgomery -- deletions are not observable through keyset incremental ingest."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Lineage: the bronze row hash (Montgomery/TxDOT) or the annual zip hash (FARS, whose unit of raw preservation is the zip, not a page)."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "Lineage: the raw payload file (Montgomery/TxDOT) or the zip member (FARS)."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "crash_id"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 50000
+      }
+    },
+    "fars.accident": {
+      "title": "FARS accident",
+      "description": "One row per (year, ST_CASE) per version. SCD2 snapshot mode scoped to the year -- the 2023 file says nothing about 2024.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "natural_key",
+        "year",
+        "st_case",
+        "state_fips",
+        "jurisdiction",
+        "city",
+        "crash_date",
+        "lat_raw",
+        "lon_raw",
+        "geo_quality",
+        "coordinate_sentinel",
+        "fatals",
+        "persons",
+        "permvit",
+        "pernotmvit",
+        "peds",
+        "ve_total",
+        "ve_forms",
+        "pvh_invl",
+        "harm_ev",
+        "man_coll",
+        "reljct1",
+        "reljct2",
+        "typ_int",
+        "wrk_zone",
+        "rel_road",
+        "lgt_cond",
+        "weather",
+        "sch_bus",
+        "rail",
+        "route",
+        "rur_urb",
+        "func_sys",
+        "rd_owner",
+        "nhs",
+        "sp_jur",
+        "tway_id",
+        "tway_id2",
+        "day_week",
+        "row_hash",
+        "valid_from",
+        "is_current",
+        "version_no",
+        "_bronze_load_ts",
+        "_bronze_row_sha256",
+        "_bronze_raw_path"
+      ],
+      "properties": {
+        "natural_key": {
+          "type": "string"
+        },
+        "year": {
+          "type": "string"
+        },
+        "st_case": {
+          "type": "string"
+        },
+        "state_fips": {
+          "type": "string",
+          "pattern": "^[0-9]{1,2}$"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "Two-letter, matching contracts/lead_output.schema.json."
+        },
+        "county_fips": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{3}$"
+        },
+        "city": {
+          "type": "integer"
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "crash_datetime_local": {
+          "type": [
+            "timestamp",
+            "null"
+          ],
+          "description": "Naive local wall clock exactly as published. NOT localised to UTC: that needs the coordinate-derived IANA zone and is Phase 4."
+        },
+        "crash_hour": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 23
+        },
+        "crash_minute": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 59
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected. NOT range-checked -- that is the point: an out-of-envelope or sentinel coordinate survives here so the defect stays auditable."
+        },
+        "lon_raw": {
+          "type": "number",
+          "description": "Raw source value, kept even when rejected."
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "coordinate_sentinel": {
+          "type": "boolean",
+          "description": "LATITUDE/LONGITUD held 77.7777/88.8888/99.9999 (matched NUMERICALLY -- 2019 writes 77.7777, 2024 writes 77.77770000)."
+        },
+        "fatals": {
+          "type": "integer"
+        },
+        "persons": {
+          "type": "integer"
+        },
+        "permvit": {
+          "type": "integer"
+        },
+        "pernotmvit": {
+          "type": "integer"
+        },
+        "peds": {
+          "type": "integer"
+        },
+        "ve_total": {
+          "type": "integer"
+        },
+        "ve_forms": {
+          "type": "integer"
+        },
+        "pvh_invl": {
+          "type": "integer"
+        },
+        "harm_ev": {
+          "type": "integer"
+        },
+        "man_coll": {
+          "type": "integer"
+        },
+        "reljct1": {
+          "type": "integer"
+        },
+        "reljct2": {
+          "type": "integer"
+        },
+        "typ_int": {
+          "type": "integer"
+        },
+        "wrk_zone": {
+          "type": "integer"
+        },
+        "rel_road": {
+          "type": "integer"
+        },
+        "lgt_cond": {
+          "type": "integer"
+        },
+        "weather": {
+          "type": "integer"
+        },
+        "sch_bus": {
+          "type": "integer"
+        },
+        "rail": {
+          "type": "string"
+        },
+        "route": {
+          "type": "integer"
+        },
+        "rur_urb": {
+          "type": "integer"
+        },
+        "func_sys": {
+          "type": "integer"
+        },
+        "rd_owner": {
+          "type": "integer"
+        },
+        "nhs": {
+          "type": "integer"
+        },
+        "sp_jur": {
+          "type": "integer"
+        },
+        "milept": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tway_id": {
+          "type": "string"
+        },
+        "tway_id2": {
+          "type": "string"
+        },
+        "day_week": {
+          "type": "integer"
+        },
+        "not_hour": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "not_min": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "arr_hour": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "arr_min": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hosp_hr": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hosp_mn": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "row_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "md5 over the CONFORMED attribute columns only -- not over _bronze_* metadata, so a re-ingest under a new load_ts does not manufacture a version."
+        },
+        "valid_from": {
+          "type": "string",
+          "description": "Source mutation stamp where one exists (Montgomery :updated_at), else the bronze _bronze_load_ts that first carried this row hash. Never now(): silver is a pure function of bronze."
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The next version's valid_from. NULL on the current version."
+        },
+        "is_current": {
+          "type": "boolean",
+          "description": "Exactly one TRUE per natural_key, enforced by the unique key on the _current tables."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted_in_load_ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot load_ts in which this key was first absent from its own scope. Always NULL for Montgomery -- deletions are not observable through keyset incremental ingest."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Lineage: the bronze row hash (Montgomery/TxDOT) or the annual zip hash (FARS, whose unit of raw preservation is the zip, not a page)."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "Lineage: the raw payload file (Montgomery/TxDOT) or the zip member (FARS)."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "year",
+            "st_case"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 100000
+      }
+    },
+    "fars.vehicle": {
+      "title": "FARS vehicle",
+      "description": "One row per (year, ST_CASE, VEH_NO) per version. year comes from _bronze_dataset: the vehicle file has no YEAR column and ST_CASE restarts every year.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "natural_key",
+        "year",
+        "st_case",
+        "veh_no",
+        "state_fips",
+        "jurisdiction",
+        "crash_date",
+        "numoccs",
+        "make",
+        "model",
+        "body_typ",
+        "vin",
+        "deformed",
+        "tow_veh",
+        "spec_use",
+        "emer_use",
+        "impact1",
+        "dr_pres",
+        "l_state",
+        "dr_zip",
+        "l_status",
+        "hit_run",
+        "reg_stat",
+        "owner",
+        "deaths",
+        "dr_drink",
+        "row_hash",
+        "valid_from",
+        "is_current",
+        "version_no",
+        "_bronze_load_ts",
+        "_bronze_row_sha256",
+        "_bronze_raw_path"
+      ],
+      "properties": {
+        "natural_key": {
+          "type": "string"
+        },
+        "year": {
+          "type": "string"
+        },
+        "st_case": {
+          "type": "string"
+        },
+        "veh_no": {
+          "type": "integer"
+        },
+        "state_fips": {
+          "type": "string",
+          "pattern": "^[0-9]{1,2}$"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "Two-letter, matching contracts/lead_output.schema.json."
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "numoccs": {
+          "type": "integer"
+        },
+        "make": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "mod_year": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "body_typ": {
+          "type": "integer"
+        },
+        "vin": {
+          "type": "string"
+        },
+        "trav_sp": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "deformed": {
+          "type": "integer"
+        },
+        "tow_veh": {
+          "type": "integer"
+        },
+        "spec_use": {
+          "type": "integer"
+        },
+        "emer_use": {
+          "type": "integer"
+        },
+        "impact1": {
+          "type": "integer"
+        },
+        "veh_sc1": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "veh_sc2": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dr_pres": {
+          "type": "integer"
+        },
+        "l_state": {
+          "type": "integer"
+        },
+        "dr_zip": {
+          "type": "string"
+        },
+        "l_status": {
+          "type": "integer"
+        },
+        "hit_run": {
+          "type": "integer"
+        },
+        "reg_stat": {
+          "type": "integer"
+        },
+        "owner": {
+          "type": "integer"
+        },
+        "deaths": {
+          "type": "integer"
+        },
+        "dr_drink": {
+          "type": "integer"
+        },
+        "row_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "md5 over the CONFORMED attribute columns only -- not over _bronze_* metadata, so a re-ingest under a new load_ts does not manufacture a version."
+        },
+        "valid_from": {
+          "type": "string",
+          "description": "Source mutation stamp where one exists (Montgomery :updated_at), else the bronze _bronze_load_ts that first carried this row hash. Never now(): silver is a pure function of bronze."
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The next version's valid_from. NULL on the current version."
+        },
+        "is_current": {
+          "type": "boolean",
+          "description": "Exactly one TRUE per natural_key, enforced by the unique key on the _current tables."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted_in_load_ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot load_ts in which this key was first absent from its own scope. Always NULL for Montgomery -- deletions are not observable through keyset incremental ingest."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Lineage: the bronze row hash (Montgomery/TxDOT) or the annual zip hash (FARS, whose unit of raw preservation is the zip, not a page)."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "Lineage: the raw payload file (Montgomery/TxDOT) or the zip member (FARS)."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "year",
+            "st_case",
+            "veh_no"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "year",
+              "st_case"
+            ],
+            "references": {
+              "table": "fars.accident",
+              "columns": [
+                "year",
+                "st_case"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 200000
+      }
+    },
+    "fars.person": {
+      "title": "FARS person",
+      "description": "One row per (year, ST_CASE, VEH_NO, PER_NO) per version. INJ_SEV sentinels are mapped BEFORE any aggregate: a MAX(INJ_SEV) that has not had 9 removed returns 9.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "natural_key",
+        "year",
+        "st_case",
+        "veh_no",
+        "per_no",
+        "state_fips",
+        "jurisdiction",
+        "crash_date",
+        "sex",
+        "per_typ",
+        "seat_pos",
+        "rest_use",
+        "air_bag",
+        "ejection",
+        "drinking",
+        "drugs",
+        "death_da",
+        "death_mo",
+        "death_yr",
+        "hospital",
+        "location",
+        "inj_sev_raw",
+        "severity_ordinal",
+        "row_hash",
+        "valid_from",
+        "is_current",
+        "version_no",
+        "_bronze_load_ts",
+        "_bronze_row_sha256",
+        "_bronze_raw_path"
+      ],
+      "properties": {
+        "natural_key": {
+          "type": "string"
+        },
+        "year": {
+          "type": "string"
+        },
+        "st_case": {
+          "type": "string"
+        },
+        "veh_no": {
+          "type": "integer"
+        },
+        "per_no": {
+          "type": "integer"
+        },
+        "state_fips": {
+          "type": "string",
+          "pattern": "^[0-9]{1,2}$"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "Two-letter, matching contracts/lead_output.schema.json."
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "age": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sex": {
+          "type": "integer"
+        },
+        "per_typ": {
+          "type": "integer"
+        },
+        "seat_pos": {
+          "type": "integer"
+        },
+        "rest_use": {
+          "type": "integer"
+        },
+        "air_bag": {
+          "type": "integer"
+        },
+        "ejection": {
+          "type": "integer"
+        },
+        "drinking": {
+          "type": "integer"
+        },
+        "drugs": {
+          "type": "integer"
+        },
+        "doa": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "death_da": {
+          "type": "integer"
+        },
+        "death_mo": {
+          "type": "integer"
+        },
+        "death_yr": {
+          "type": "integer"
+        },
+        "hospital": {
+          "type": "integer"
+        },
+        "location": {
+          "type": "integer"
+        },
+        "inj_sev": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "inj_sev_raw": {
+          "type": "integer"
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "The single harmonised scale. 0 unknown, 1 no apparent injury (O), 2 possible (C), 3 suspected minor (B), 4 suspected serious (A), 5 fatal (K). See config/severity_crosswalk.csv."
+        },
+        "severity_kabco": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "K",
+            "A",
+            "B",
+            "C",
+            "O"
+          ]
+        },
+        "severity_note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "INJURED_UNKNOWN",
+            "DIED_PRIOR_TO_CRASH",
+            "UNKNOWN"
+          ],
+          "description": "Why a FARS person maps to ordinal 0. Three different reasons, all lossy in different ways."
+        },
+        "row_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "md5 over the CONFORMED attribute columns only -- not over _bronze_* metadata, so a re-ingest under a new load_ts does not manufacture a version."
+        },
+        "valid_from": {
+          "type": "string",
+          "description": "Source mutation stamp where one exists (Montgomery :updated_at), else the bronze _bronze_load_ts that first carried this row hash. Never now(): silver is a pure function of bronze."
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The next version's valid_from. NULL on the current version."
+        },
+        "is_current": {
+          "type": "boolean",
+          "description": "Exactly one TRUE per natural_key, enforced by the unique key on the _current tables."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deleted_in_load_ts": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot load_ts in which this key was first absent from its own scope. Always NULL for Montgomery -- deletions are not observable through keyset incremental ingest."
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        },
+        "_bronze_row_sha256": {
+          "type": "string",
+          "description": "Lineage: the bronze row hash (Montgomery/TxDOT) or the annual zip hash (FARS, whose unit of raw preservation is the zip, not a page)."
+        },
+        "_bronze_raw_path": {
+          "type": "string",
+          "description": "Lineage: the raw payload file (Montgomery/TxDOT) or the zip member (FARS)."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "year",
+            "st_case",
+            "veh_no",
+            "per_no"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "year",
+              "st_case"
+            ],
+            "references": {
+              "table": "fars.accident",
+              "columns": [
+                "year",
+                "st_case"
+              ]
+            }
+          }
+        ],
+        "row_count_min": 300000
+      }
+    },
+    "fars.codebook": {
+      "title": "FARS code dictionary, extracted from the data",
+      "description": "Every <COL>NAME label column, as (table, column, code, label, first_year, last_year). NHTSA's own labels out of NHTSA's own files -- evidence for the severity crosswalk rather than a transcription of the manual. Columns with more than 300 distinct codes are excluded: they label continuous fields, not code dictionaries.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "tbl",
+        "col",
+        "code",
+        "label",
+        "first_year",
+        "last_year",
+        "row_count"
+      ],
+      "properties": {
+        "tbl": {
+          "type": "string"
+        },
+        "col": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "first_year": {
+          "type": "string"
+        },
+        "last_year": {
+          "type": "string"
+        },
+        "row_count": {
+          "type": "integer"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "tbl",
+            "col",
+            "code",
+            "label"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 100
+      }
+    },
+    "silver.crash": {
+      "title": "Unified crash grain",
+      "description": "One row per crash per SOURCE. A conformed grain, not an entity-resolved fact: a Texas fatality legitimately appears in both TXDOT_CRIS and NHTSA_FARS. Cross-source resolution is Phase 3, on top of this table.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "crash_uid",
+        "source_system",
+        "source_record_id",
+        "jurisdiction",
+        "crash_date",
+        "geo_quality",
+        "severity_ordinal",
+        "severity_grain",
+        "version_no",
+        "_bronze_load_ts"
+      ],
+      "properties": {
+        "crash_uid": {
+          "type": "string",
+          "pattern": "^(MONTGOMERY_MD|TXDOT_CRIS|NHTSA_FARS):.+$",
+          "description": "Deterministic: source_system + ':' + source_record_id. Never random -- a UUID would break byte-identity on rebuild and make a lead id unstable across runs."
+        },
+        "source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "TXDOT_CRIS",
+            "NHTSA_FARS"
+          ],
+          "description": "Matches the lead output contract's enum."
+        },
+        "source_record_id": {
+          "type": "string"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "Two-letter, matching contracts/lead_output.schema.json."
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "crash_datetime_local": {
+          "type": [
+            "timestamp",
+            "null"
+          ],
+          "description": "Naive local wall clock exactly as published. NOT localised to UTC: that needs the coordinate-derived IANA zone and is Phase 4."
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "severity_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "The single harmonised scale. 0 unknown, 1 no apparent injury (O), 2 possible (C), 3 suspected minor (B), 4 suspected serious (A), 5 fatal (K). See config/severity_crosswalk.csv."
+        },
+        "severity_source_value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity_grain": {
+          "type": "string",
+          "enum": [
+            "MAX_OVER_PARTIES",
+            "CRASH_REPORT_TYPE",
+            "SOURCE_CRASH_LEVEL",
+            "FATALITY_CENSUS"
+          ],
+          "description": "Which rule produced severity_ordinal, so a max-over-parties is never mistaken for a source-published crash severity."
+        },
+        "is_amended": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "TxDOT amend_supp_fl. NULL for Montgomery and FARS, which publish no per-record amendment flag -- NULL means 'this source does not say', never 'no'."
+        },
+        "version_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "_bronze_load_ts": {
+          "type": "string",
+          "description": "Lineage: the bronze partition this version was read from."
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "crash_uid"
+          ],
+          [
+            "source_system",
+            "source_record_id"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 100000
+      }
+    }
+  }
+}
