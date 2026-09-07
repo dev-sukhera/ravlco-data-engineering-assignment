@@ -55,6 +55,16 @@ RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 MAX_SLEEP_SECONDS = 120.0
 
 
+def _durable_rename(tmp: Path, dest: Path) -> None:
+    """Rename and fsync the directory, so the rename itself survives a crash."""
+    tmp.replace(dest)
+    dir_fd = os.open(dest.parent, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
 class HttpError(RuntimeError):
     """A request failed and will not be retried."""
 
@@ -203,6 +213,30 @@ class HttpClient:
             )
         return response
 
+    def _single_request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        headers: Mapping[str, str] | None = None,
+        stream: bool = False,
+    ) -> requests.Response:
+        """Exactly one attempt. `download()` drives its own retry loop and must
+        not nest one inside another, or 6 attempts becomes 36."""
+        self._pace()
+        self._last_request_at = time.monotonic()
+        self.stats["requests"] += 1
+        response = self.session.request(
+            method,
+            url,
+            params=params,
+            headers=dict(headers) if headers else None,
+            timeout=self.timeout,
+            stream=stream,
+        )
+        return self._check(response)
+
     def request(
         self,
         method: str,
@@ -214,18 +248,9 @@ class HttpClient:
     ) -> requests.Response:
         for attempt in self._retrying():
             with attempt:
-                self._pace()
-                self._last_request_at = time.monotonic()
-                self.stats["requests"] += 1
-                response = self.session.request(
-                    method,
-                    url,
-                    params=params,
-                    headers=dict(headers) if headers else None,
-                    timeout=self.timeout,
-                    stream=stream,
+                return self._single_request(
+                    method, url, params=params, headers=headers, stream=stream
                 )
-                return self._check(response)
         raise AssertionError("unreachable: Retrying either returns or raises")
 
     def get(self, url: str, **kwargs: Any) -> requests.Response:
@@ -248,47 +273,110 @@ class HttpClient:
         url: str,
         dest: Path,
         *,
-        chunk_size: int = 1 << 20,
+        chunk_size: int = 1 << 18,  # 256KB: resume granularity, not throughput
         headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Stream a (potentially large) file to `dest`, hashing as it goes.
+        """Stream a large file to `dest`, hashing as it goes.
 
-        Writes to a `.part` sibling and renames only on a complete, fsynced
-        body, so an interrupted download can never be mistaken for a good one
-        by a later run. Returns the response metadata FARS needs to detect a
-        silent in-place revision: sha256, Last-Modified, ETag, byte count.
+        The retry scope covers the *body*, not just the response headers. The
+        first version of this wrapped only the request, and a FARS download
+        stalled 26MB into a 32MB file and killed the run: `iter_content` raised
+        a read timeout from outside the retry loop, where nothing was watching.
+        A 34MB transfer from a CDN that goes quiet mid-body is the normal case
+        this has to survive, not an edge case.
+
+        A retry resumes with `Range` rather than starting over, and pairs it
+        with `If-Range` carrying the previous attempt's validator, so a file
+        that is revised mid-download makes the server send the whole new entity
+        (200) instead of splicing two versions into one corrupt zip -- which for
+        a source that is silently revised in place is a real hazard, not a
+        theoretical one. Any pre-existing `.part` is discarded first: it could
+        be from an older revision, and there is no validator to check it with.
+
+        Writes to `.part` and renames only after a complete, fsynced,
+        length-checked body, so an interrupted download can never be mistaken
+        for a good one by a later run.
         """
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(dest.suffix + ".part")
-        digest = hashlib.sha256()
-        size = 0
-        response = self.get(url, stream=True, headers=headers)
-        with response:
-            with tmp.open("wb") as fh:
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    if not chunk:
-                        continue
-                    digest.update(chunk)
-                    size += len(chunk)
-                    fh.write(chunk)
-                fh.flush()
-                os.fsync(fh.fileno())
-        declared = response.headers.get("Content-Length")
-        if declared is not None and int(declared) != size:
-            tmp.unlink(missing_ok=True)
-            raise RetryableHttpError(
-                f"truncated download: got {size} bytes, Content-Length said {declared}",
-                status=response.status_code,
-            )
-        tmp.replace(dest)
-        return {
-            "path": dest,
-            "sha256": digest.hexdigest(),
-            "bytes": size,
-            "last_modified": response.headers.get("Last-Modified"),
-            "etag": response.headers.get("ETag"),
-            "status": response.status_code,
-        }
+        tmp.unlink(missing_ok=True)
+
+        validator: str | None = None
+        expected: int | None = None
+
+        for attempt in self._retrying():
+            with attempt:
+                offset = tmp.stat().st_size if tmp.exists() else 0
+                request_headers = dict(headers or {})
+                if offset and validator:
+                    request_headers["Range"] = f"bytes={offset}-"
+                    request_headers["If-Range"] = validator
+                elif offset:
+                    offset = 0  # nothing to validate a resume against
+
+                response = self._single_request(
+                    "GET", url, headers=request_headers, stream=True
+                )
+                validator = response.headers.get("ETag") or response.headers.get(
+                    "Last-Modified"
+                )
+                resumed = response.status_code == 206
+                if offset and not resumed:
+                    # Server ignored Range, or If-Range failed because the file
+                    # changed. Either way this is a full body: start again.
+                    offset = 0
+                if not offset:
+                    tmp.unlink(missing_ok=True)
+
+                digest = hashlib.sha256()
+                if offset:
+                    with tmp.open("rb") as fh:
+                        for chunk in iter(lambda: fh.read(chunk_size), b""):
+                            digest.update(chunk)
+
+                content_range = response.headers.get("Content-Range")
+                if resumed and content_range and "/" in content_range:
+                    total = content_range.rsplit("/", 1)[1]
+                    expected = int(total) if total.isdigit() else expected
+                elif response.headers.get("Content-Length") is not None:
+                    expected = offset + int(response.headers["Content-Length"])
+
+                size = offset
+                with response:
+                    with tmp.open("ab" if offset else "wb") as fh:
+                        try:
+                            for chunk in response.iter_content(chunk_size=chunk_size):
+                                if not chunk:
+                                    continue
+                                digest.update(chunk)
+                                size += len(chunk)
+                                fh.write(chunk)
+                        except (requests.exceptions.RequestException, OSError) as exc:
+                            fh.flush()
+                            os.fsync(fh.fileno())
+                            # Keep the bytes: the next attempt resumes from here.
+                            raise RetryableHttpError(
+                                f"stream interrupted at {size} bytes of "
+                                f"{expected or '?'}: {exc}"
+                            ) from exc
+                        fh.flush()
+                        os.fsync(fh.fileno())
+
+                if expected is not None and size != expected:
+                    raise RetryableHttpError(
+                        f"short body: got {size} bytes, expected {expected}"
+                    )
+
+                _durable_rename(tmp, dest)
+                return {
+                    "path": dest,
+                    "sha256": digest.hexdigest(),
+                    "bytes": size,
+                    "last_modified": response.headers.get("Last-Modified"),
+                    "etag": response.headers.get("ETag"),
+                    "status": response.status_code,
+                }
+        raise AssertionError("unreachable: Retrying either returns or raises")
 
     def close(self) -> None:
         self.session.close()

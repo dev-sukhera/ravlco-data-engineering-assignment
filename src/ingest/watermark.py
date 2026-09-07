@@ -89,7 +89,7 @@ def bronze_partition(source: str, dataset: str, load_ts: str, root: Path | None 
 # ---------------------------------------------------------------------------
 
 
-def _durable_replace(tmp: Path, dest: Path) -> None:
+def durable_replace(tmp: Path, dest: Path) -> None:
     """Rename tmp -> dest and fsync the containing directory.
 
     Without the directory fsync the rename itself can be lost in a crash even
@@ -120,7 +120,7 @@ def write_bytes(dest: Path, payload: bytes, *, compress: bool = False) -> dict[s
         fh.write(body)
         fh.flush()
         os.fsync(fh.fileno())
-    _durable_replace(tmp, dest)
+    durable_replace(tmp, dest)
     return {
         "path": dest,
         "sha256": hashlib.sha256(payload).hexdigest(),
@@ -208,7 +208,7 @@ def write_rows_parquet(
 
     tmp = dest.with_name(dest.name + ".part")
     pq.write_table(table, tmp, compression="zstd")
-    _durable_replace(tmp, dest)
+    durable_replace(tmp, dest)
     return {"path": dest, "bytes": dest.stat().st_size, "row_count": len(rows)}
 
 
