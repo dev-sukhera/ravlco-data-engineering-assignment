@@ -843,6 +843,82 @@ def _validate(
 
 
 # ---------------------------------------------------------------------------
+# the bbox-pruning measurement behind "justify your file sizes"
+# ---------------------------------------------------------------------------
+
+# The two query scales the measurement uses, in EPSG:4326. One is county-sized
+# (the read a Phase 5 hotspot map does), one is corridor-sized (the read a
+# Phase 7 "which crashes on this stretch of Georgia Avenue" does). They bracket
+# the range where a covering bbox could plausibly help.
+MEASURE_BOXES = {
+    "county 13x11 km": (-77.20, 39.05, -77.05, 39.15),
+    "corridor 1.7x1.1 km": (-77.155, 39.085, -77.135, 39.095),
+}
+
+
+def measure_row_groups(
+    gdf: gpd.GeoDataFrame,
+    *,
+    sizes: Iterable[int] = (4096, 8192, 32768, 122880),
+    workdir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """How much the `bbox` covering column prunes, by row-group size and row order.
+
+    "Pruned" is the share of row groups whose covering bbox does not intersect
+    the query box, read straight out of parquet's own statistics -- a property
+    of the file, not a timing that depends on what else the machine is doing.
+
+    Three orders are compared because the ORDER is the mechanism: `h3_r9` (what
+    the partitioned copy uses, because Phase 5 groups by H3), a Hilbert curve
+    (better locality, the honest rejected alternative), and `crash_sk` (no
+    spatial order at all -- the negative control, where every row group's bbox
+    is the whole extent and nothing can ever be skipped).
+    """
+    import tempfile
+
+    import pyarrow.parquet as pq
+
+    have = gdf[gdf.geometry.notna()]
+    orders = {
+        "h3_r9": have.sort_values(["h3_r9", "crash_sk"], ignore_index=True),
+        "hilbert": have.assign(_h=have.geometry.hilbert_distance())
+                       .sort_values(["_h", "crash_sk"], ignore_index=True)
+                       .drop(columns="_h"),
+        "crash_sk (no spatial order)": have.sort_values("crash_sk", ignore_index=True),
+    }
+    out: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(dir=workdir) as tmp:
+        for order, frame in orders.items():
+            for size in sizes:
+                path = Path(tmp) / f"{order.split()[0]}_{size}.parquet"
+                info = write_geoparquet(frame, path, row_group_size=size)
+                pf = pq.ParquetFile(path)
+                boxes = []
+                for i in range(pf.num_row_groups):
+                    rg, stats = pf.metadata.row_group(i), {}
+                    for j in range(rg.num_columns):
+                        col = rg.column(j)
+                        if col.path_in_schema.startswith("bbox."):
+                            stats[col.path_in_schema.split(".")[1]] = (
+                                col.statistics.min, col.statistics.max)
+                    if stats:
+                        boxes.append((stats["xmin"][0], stats["ymin"][0],
+                                      stats["xmax"][1], stats["ymax"][1]))
+                row = {"order": order, "row_group_size": size,
+                       "row_groups": pf.num_row_groups,
+                       "bytes": info["bytes"]}
+                for label, b in MEASURE_BOXES.items():
+                    touched = sum(
+                        1 for (x0, y0, x1, y1) in boxes
+                        if not (x1 < b[0] or x0 > b[2] or y1 < b[1] or y0 > b[3])
+                    )
+                    row[f"pruned_pct[{label}]"] = round(
+                        100 * (1 - touched / max(pf.num_row_groups, 1)), 1)
+                out.append(row)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -864,11 +940,28 @@ def _cli(argv: list[str] | None = None) -> int:
     ap.add_argument("--small-corpus", action="store_true",
                     help="skip row_count_min floors (fixture-scale builds)")
     ap.add_argument("--threads", type=int, default=None)
+    ap.add_argument("--measure-row-groups", action="store_true",
+                    help="reproduce the bbox-pruning table in the Phase 4 report "
+                         "from an existing crash_geo.parquet, and exit")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(levelname)s %(name)s %(message)s")
+
+    if args.measure_row_groups:
+        gold = Path(args.gold_root) if args.gold_root else GOLD_DIR
+        gdf = gpd.read_parquet(gold / f"{CRASH_GEO}.parquet")
+        gdf = gdf[(gdf["jurisdiction"] == "MD") & gdf.geometry.notna()]
+        rows = measure_row_groups(gdf)
+        print(f"{len(gdf)} geocoded Maryland rows; query boxes: "
+              f"{', '.join(MEASURE_BOXES)}\n")
+        header = list(rows[0])
+        widths = [max(len(h), *(len(str(r[h])) for r in rows)) for h in header]
+        print("  ".join(h.ljust(w) for h, w in zip(header, widths)))
+        for r in rows:
+            print("  ".join(str(r[h]).ljust(w) for h, w in zip(header, widths)))
+        return 0
 
     result = build_geo(
         gold_root=args.gold_root, reference_root=args.reference_root,
