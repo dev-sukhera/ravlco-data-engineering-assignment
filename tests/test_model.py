@@ -98,10 +98,24 @@ def test_driver_grain_fans_out_from_crash_grain(gold_con):
 # ===========================================================================
 
 
+def _phase3_tables(contract) -> dict[str, str]:
+    """{contract table: relation} for the tables `build_gold` actually writes.
+
+    The gold contract also carries Phase 4's `crash_geo` and `dim_block_group`,
+    which are built by `python -m src.geo.build` from reference data this
+    fixture deliberately does not have. Scoping by `model.COLUMNS` keeps these
+    two tests asserting exactly what they always asserted -- every table this
+    build produces -- rather than failing on a table it does not.
+    """
+    return {f"gold.{t}": f"gold_{t}" for t in model.COLUMNS
+            if f"gold.{t}" in contract["tables"]}
+
+
 def test_every_foreign_key_resolves_with_no_nulls(gold_con):
     contract = contracts.load_contract(model.GOLD_CONTRACT)
     checked = 0
-    for table, spec in contract["tables"].items():
+    for table in _phase3_tables(contract):
+        spec = contract["tables"][table]
         rel = "gold_" + table.split(".", 1)[1]
         for fk in spec["x-table-constraints"]["foreign_keys"]:
             assert "orphans_allowed_when" not in fk, f"gold admits no orphan licence: {table} {fk}"
@@ -340,7 +354,7 @@ def test_party_keys_are_unique_per_source_party(gold_con):
 
 def test_gold_tables_pass_their_contract(gold_con):
     contract = contracts.load_contract(model.GOLD_CONTRACT)
-    resolve = {t: "gold_" + t.split(".", 1)[1] for t in contract["tables"]}
+    resolve = _phase3_tables(contract)
     violations = []
     for table, rel in resolve.items():
         violations += contracts.validate_relation(gold_con, rel, contract, table,

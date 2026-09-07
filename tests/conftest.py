@@ -358,3 +358,103 @@ class GoldRunner(PipelineRunner):
 @pytest.fixture
 def gold_runner(bronze_root: Path, tmp_path: Path) -> GoldRunner:
     return GoldRunner(bronze_root, tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# geo (Phase 4)
+# ---------------------------------------------------------------------------
+
+from src import config as src_config  # noqa: E402
+from src.geo import build as geo_build_module  # noqa: E402
+from src.geo import reference as geo_reference  # noqa: E402
+
+FULL_REFERENCE_ENV = "CRASH_TEST_FULL_REFERENCE"
+
+# The reference files the geo integration fixtures cannot run without. TIGER
+# only: the OSM PBF and the Open-Meteo cache gate their own tests separately,
+# because a 203 MB download and a network call are different kinds of
+# prerequisite from a 10 MB polygon zip.
+REQUIRED_REFERENCE = ("COUNTY", "BG", "TRACT")
+
+
+def reference_root() -> Path:
+    return geo_reference.reference_root()
+
+
+def missing_reference() -> list[str]:
+    """Which required reference files are absent. Empty means "can run"."""
+    root = reference_root()
+    ref = src_config.geo()["reference"]
+    year, states = int(ref["tiger_year"]), ref["state_fips"]
+    wanted = [geo_reference.tiger_relpath("COUNTY", year=year)]
+    for fips in states:
+        wanted += [geo_reference.tiger_relpath(layer, year=year, fips=fips)
+                   for layer in ("BG", "TRACT")]
+    return [w for w in wanted if not (root / w).exists()]
+
+
+def require_reference() -> bool:
+    return os.environ.get(FULL_REFERENCE_ENV, "") not in ("", "0", "false", "no")
+
+
+@pytest.fixture(scope="session")
+def geo_reference_store():
+    """A read-only, OFFLINE reference store.
+
+    Offline is not a convenience here, it is the rule: no test in this suite
+    touches the network, so a missing reference file must raise rather than
+    quietly download 250 MB in the middle of a test run.
+    """
+    missing = missing_reference()
+    if missing:
+        message = (
+            f"reference data missing ({len(missing)} file(s), e.g. {missing[0]}) -- "
+            "run `python -m src.geo.reference --all`"
+        )
+        if require_reference():
+            pytest.fail(f"{FULL_REFERENCE_ENV} is set but {message}")
+        pytest.skip(message)
+    return geo_reference.ReferenceStore(reference_root(), offline=True)
+
+
+@pytest.fixture(scope="session")
+def geo_root(tmp_path_factory, gold_root: Path, geo_reference_store) -> Path:
+    """crash_geo built once per session, by the real builder, into a tmp gold.
+
+    Snap and weather are off: one needs a 203 MB extract and the other needs
+    the network, and both are covered by their own tests (synthetic geometry
+    for snapping, a committed response for weather). Everything else -- PIP,
+    H3, timezone, the contract, GeoParquet -- runs for real over the session's
+    gold.
+    """
+    dest = tmp_path_factory.mktemp("geo_gold")
+    for p in sorted(gold_root.glob("*.parquet")):
+        shutil.copy2(p, dest / p.name)
+    shutil.copy2(gold_root / "_build_manifest.json", dest / "_build_manifest.json")
+    geo_build_module.build_geo(
+        gold_root=dest,
+        reference_root=reference_root(),
+        skip_snap=True,
+        skip_weather=True,
+        small_corpus=not using_full_bronze(),
+    )
+    return dest
+
+
+@pytest.fixture(scope="session")
+def geo_manifest(geo_root: Path) -> dict:
+    return json.loads((geo_root / "_geo_manifest.json").read_text())
+
+
+@pytest.fixture(scope="session")
+def geo_con(geo_root: Path):
+    """`geo_crash_geo`, `geo_dim_block_group` and every gold table beside them."""
+    con = c.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    for path in sorted(geo_root.glob("*.parquet")):
+        p = str(path).replace("'", "''")
+        con.execute(
+            f"CREATE OR REPLACE VIEW geo_{path.stem} AS SELECT * FROM read_parquet('{p}')"
+        )
+    yield con
+    con.close()
