@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "contracts/gold.schema.json",
   "title": "Gold layer contracts",
-  "description": "One entry per gold table, same dialect as bronze/silver/lead_output. Row shape in `properties`; grain, referential integrity and the row-count floor in `x-table-constraints`. No `orphans_allowed_when` anywhere in gold: every dimension has an explicit UNKNOWN member, so a missing parent is always a bug.",
+  "description": "One entry per gold table, same dialect as bronze/silver/lead_output. Row shape in `properties`; grain, referential integrity and the row-count floor in `x-table-constraints`. No `orphans_allowed_when` anywhere in gold: every dimension has an explicit UNKNOWN member, so a missing parent is always a bug. Phase 4 adds gold.crash_geo (one row per crash_sk, the geospatial enrichment) and gold.dim_block_group; crash_geo is written as GeoParquet 1.1.0 with a bbox covering column, so its `geometry` column is WKB and validates as a string.",
   "tables": {
     "gold.fact_crash": {
       "title": "Crash fact",
@@ -1533,6 +1533,484 @@
           }
         ],
         "row_count_min": 20
+      }
+    },
+    "gold.crash_geo": {
+      "title": "Crash geospatial enrichment",
+      "description": "Exactly one row per gold.fact_crash.crash_sk, including rows with no geometry. The single table Phases 5-7 read for census geography, H3, timezone, road snap and weather. fact_crash and dim_geography are NOT widened: Phase 3's hashes and tests must not move, and an enrichment table can be rebuilt from hashed reference inputs without restating the fact. Geometry is EPSG:4326 WKB (NULL where geo_quality is not OK -- coordinates are already NULL for every non-OK row in silver). Every metric column names the projected CRS it was computed in: snap_crs_epsg. Every NULL has a status column saying why: pip_status, time_status, snap_status, weather_status.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "crash_sk",
+        "jurisdiction",
+        "primary_source_system",
+        "crash_date",
+        "geo_quality",
+        "pip_status",
+        "tz_source",
+        "time_status",
+        "snap_status",
+        "weather_status",
+        "_geo_build_sha",
+        "tiger_vintage"
+      ],
+      "properties": {
+        "crash_sk": {
+          "type": "integer"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "primary_source_system": {
+          "type": "string",
+          "enum": [
+            "MONTGOMERY_MD",
+            "TXDOT_CRIS",
+            "NHTSA_FARS"
+          ]
+        },
+        "crash_date": {
+          "type": "date"
+        },
+        "geometry": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "POINT in EPSG:4326 as WKB; NULL where the crash has no usable coordinate."
+        },
+        "geo_quality": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "OUT_OF_ENVELOPE",
+            "SENTINEL",
+            "MISSING"
+          ]
+        },
+        "pip_county_geoid": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{5}$"
+        },
+        "county_agrees_with_source": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "tract_geoid": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{11}$"
+        },
+        "bg_geoid": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{12}$"
+        },
+        "pip_status": {
+          "type": "string",
+          "enum": [
+            "MATCHED",
+            "NO_POLYGON",
+            "NO_GEOMETRY"
+          ]
+        },
+        "h3_r9": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{15}$"
+        },
+        "h3_r8": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{15}$"
+        },
+        "h3_r7": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{15}$"
+        },
+        "crash_datetime_local": {
+          "type": [
+            "timestamp",
+            "null"
+          ]
+        },
+        "tz_iana": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tz_source": {
+          "type": "string",
+          "enum": [
+            "COORDINATE",
+            "COUNTY_FALLBACK",
+            "JURISDICTION_DEFAULT",
+            "UNRESOLVED"
+          ]
+        },
+        "tz_low_confidence": {
+          "type": "boolean"
+        },
+        "crash_datetime_utc": {
+          "type": [
+            "timestamp",
+            "null"
+          ]
+        },
+        "utc_offset_minutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": -900,
+          "maximum": 900
+        },
+        "tz_gap_adjusted": {
+          "type": "boolean"
+        },
+        "tz_ambiguous": {
+          "type": "boolean"
+        },
+        "time_status": {
+          "type": "string",
+          "enum": [
+            "OK",
+            "TIME_UNKNOWN"
+          ]
+        },
+        "snap_status": {
+          "type": "string",
+          "enum": [
+            "SNAPPED",
+            "REJECTED_DISTANCE",
+            "NOT_ATTEMPTED",
+            "NO_GEOMETRY"
+          ]
+        },
+        "osm_way_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "snap_distance_m": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "segment_length_m": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "offset_m": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "offset_frac": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "osm_highway": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "osm_maxspeed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "osm_maxspeed_mph": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 130
+        },
+        "osm_lanes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "osm_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "osm_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "snap_crs_epsg": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "weather_status": {
+          "type": "string",
+          "enum": [
+            "JOINED",
+            "NOT_IN_SCOPE",
+            "NO_GEOMETRY",
+            "NO_TIME",
+            "NO_DATA"
+          ]
+        },
+        "era5_hour_utc": {
+          "type": [
+            "timestamp",
+            "null"
+          ]
+        },
+        "era5_temperature_2m_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "era5_precipitation_mm": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "era5_rain_mm": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "era5_snowfall_cm": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "era5_weather_code": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "era5_wind_speed_10m_kmh": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "era5_grid_lat": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "era5_grid_lon": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "_geo_build_sha": {
+          "type": "string"
+        },
+        "tiger_vintage": {
+          "type": "string"
+        },
+        "osm_pbf_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tz_db_version": {
+          "type": "string"
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "crash_sk"
+          ]
+        ],
+        "foreign_keys": [
+          {
+            "columns": [
+              "crash_sk"
+            ],
+            "references": {
+              "table": "gold.fact_crash",
+              "columns": [
+                "crash_sk"
+              ]
+            }
+          },
+          {
+            "columns": [
+              "bg_geoid"
+            ],
+            "references": {
+              "table": "gold.dim_block_group",
+              "columns": [
+                "bg_geoid"
+              ]
+            },
+            "where": "pip_status = 'MATCHED'",
+            "note": "A NULL bg_geoid is only legitimate when pip_status <> 'MATCHED'; the `where` clause is what makes that a constraint rather than a comment."
+          }
+        ],
+        "row_count_min": 200000
+      }
+    },
+    "gold.dim_block_group": {
+      "title": "Block group dimension",
+      "description": "One row per 2025 TIGER block group in the in-scope states (FIPS 12/24/48) with TIGER's stored ALAND/AWATER in m2 and the ACS 2023 5-year population B01003_001E. density_per_km2 = population / (aland_m2 / 1e6) -- arithmetic on a stored area, not a geometric operation, so no projection is involved (it would be EPSG:5070 if it were). There is deliberately no dim_tract: tract_geoid is bg_geoid[:11] by the Census's own GEOID construction and a table whose only content is a substring of another key is not a dimension. Population is the ONLY ACS variable loaded: income, tenure, vehicles and commute are the protected-class proxies ASSIGNMENT.md Part 4 warns about, and a feature that was never loaded cannot leak into a lead score.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "bg_geoid",
+        "tract_geoid",
+        "county_geoid",
+        "state_fips",
+        "county_fips",
+        "aland_m2",
+        "awater_m2",
+        "tiger_vintage",
+        "acs_vintage",
+        "acs_variable",
+        "acs_route"
+      ],
+      "properties": {
+        "bg_geoid": {
+          "type": "string",
+          "pattern": "^[0-9]{12}$"
+        },
+        "tract_geoid": {
+          "type": "string",
+          "pattern": "^[0-9]{11}$"
+        },
+        "county_geoid": {
+          "type": "string",
+          "pattern": "^[0-9]{5}$"
+        },
+        "state_fips": {
+          "type": "string",
+          "pattern": "^[0-9]{2}$"
+        },
+        "county_fips": {
+          "type": "string",
+          "pattern": "^[0-9]{3}$"
+        },
+        "aland_m2": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "awater_m2": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "population": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "density_per_km2": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "intpt_lat": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "intpt_lon": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "tiger_vintage": {
+          "type": "string"
+        },
+        "acs_vintage": {
+          "type": "string"
+        },
+        "acs_variable": {
+          "type": "string"
+        },
+        "acs_route": {
+          "type": "string",
+          "enum": [
+            "api",
+            "summary_file"
+          ]
+        }
+      },
+      "x-table-constraints": {
+        "unique_keys": [
+          [
+            "bg_geoid"
+          ]
+        ],
+        "foreign_keys": [],
+        "row_count_min": 30000
       }
     }
   }
