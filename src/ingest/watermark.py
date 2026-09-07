@@ -46,7 +46,13 @@ from ..config import BRONZE_DIR
 
 DEFAULT_DB_PATH = BRONZE_DIR / "_watermarks.duckdb"
 
-LOAD_TS_FORMAT = "%Y%m%dT%H%M%SZ"
+# Millisecond resolution, not seconds. Two runs of the same dataset inside one
+# second is not hypothetical -- a test suite does it, and so does a retry loop --
+# and at second resolution they share a partition directory, so the second run's
+# page_00001.json silently overwrites the first's. That destroys raw payloads
+# bronze exists to preserve. Milliseconds make the collision vanishingly rare and
+# new_partition() below makes the remaining case impossible rather than unlikely.
+LOAD_TS_FORMAT = "%Y%m%dT%H%M%S%fZ"
 
 
 def utc_now() -> datetime:
@@ -71,7 +77,8 @@ def new_load_ts() -> str:
     run per dataset -- every artifact a run writes shares it, so "the newest
     partition" is `max(load_ts)` and never a directory mtime.
     """
-    return utc_now().strftime(LOAD_TS_FORMAT)
+    stamp = utc_now().strftime(LOAD_TS_FORMAT)
+    return stamp[:-4] + "Z"  # microseconds -> milliseconds
 
 
 def bronze_partition(source: str, dataset: str, load_ts: str, root: Path | None = None) -> Path:
@@ -82,6 +89,33 @@ def bronze_partition(source: str, dataset: str, load_ts: str, root: Path | None 
     always diff version N against version N-1.
     """
     return (root or BRONZE_DIR) / source / dataset / load_ts
+
+
+def new_partition(source: str, dataset: str, load_ts: str, root: Path | None = None) -> Path:
+    """Allocate a partition directory that is guaranteed not to already exist.
+
+    Callers must use the returned path's `.name` as their load_ts, so the
+    directory name and the load_ts recorded in the manifest and in every
+    `_bronze_load_ts` column can never disagree.
+
+    `mkdir` without exist_ok is the allocation: it fails rather than silently
+    joining a partition another process is already writing into. On the
+    astronomically unlikely millisecond collision a `-01` suffix is appended,
+    which keeps append-only bronze true by construction rather than by luck.
+
+    Not for resuming. A resumed TxDOT sweep deliberately continues writing into
+    its existing partition and uses `bronze_partition` directly.
+    """
+    base = bronze_partition(source, dataset, load_ts, root)
+    candidate = base
+    suffix = 0
+    while True:
+        try:
+            candidate.mkdir(parents=True)
+            return candidate
+        except FileExistsError:
+            suffix += 1
+            candidate = base.with_name(f"{base.name}-{suffix:02d}")
 
 
 # ---------------------------------------------------------------------------

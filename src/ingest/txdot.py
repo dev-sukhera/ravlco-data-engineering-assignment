@@ -104,6 +104,7 @@ from .watermark import (
     WatermarkStore,
     bronze_partition,
     new_load_ts,
+    new_partition,
     row_sha256,
     write_bytes,
     write_rows_parquet,
@@ -262,7 +263,7 @@ def sweep(
             load_ts, last_oid, page_no, rows_total,
         )
     else:
-        load_ts = new_load_ts()
+        load_ts = new_partition(SOURCE, DATASET, new_load_ts()).name
         last_oid = floor
         page_no = 0
         rows_total = 0

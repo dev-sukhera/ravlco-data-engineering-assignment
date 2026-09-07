@@ -82,6 +82,7 @@ from .watermark import (
     bronze_partition,
     durable_replace,
     new_load_ts,
+    new_partition,
 )
 
 log = logging.getLogger("ingest.fars")
@@ -192,10 +193,7 @@ def ingest_year(
     # Header moved (or we have never seen this year). Download to a staging
     # path outside any partition: until the hash is known we do not know
     # whether this download deserves a partition at all.
-    staging = (
-        bronze_partition(SOURCE, dataset, "_staging").parent
-        / "_staging" / f"FARS{year}NationalCSV.zip"
-    )
+    staging = bronze_partition(SOURCE, dataset, "_staging") / f"FARS{year}NationalCSV.zip"
     log.info("%d: downloading (%s bytes, last-modified %s)",
              year, head["content_length"], head["last_modified"])
     got = client.download(head["url"], staging)
@@ -226,9 +224,8 @@ def ingest_year(
             len(store.load_partitions(SOURCE, dataset)),
         )
 
-    load_ts = new_load_ts()
-    partition = bronze_partition(SOURCE, dataset, load_ts)
-    partition.mkdir(parents=True, exist_ok=True)
+    partition = new_partition(SOURCE, dataset, new_load_ts())
+    load_ts = partition.name
     zip_path = partition / staging.name
     durable_replace(staging, zip_path)
 
@@ -240,11 +237,23 @@ def ingest_year(
     )
 
     members: list[dict[str, Any]] = []
+    written: dict[str, str] = {}
     with zipfile.ZipFile(zip_path) as zf:
         for info in sorted(zf.infolist(), key=lambda i: i.filename.lower()):
             if info.is_dir() or not info.filename.lower().endswith(".csv"):
                 continue
+            # Member layout is not stable across years: 2019 stores CSVs at the
+            # zip root (accident.CSV), 2020+ nest them (FARS2020NationalCSV/
+            # accident.csv). Flattening to a lowercased stem normalises that --
+            # but it could in principle collide, and a collision would silently
+            # overwrite a whole table, so it fails loudly instead.
             stem = Path(info.filename).stem.lower()
+            if stem in written:
+                raise RuntimeError(
+                    f"{year}: members {written[stem]!r} and {info.filename!r} "
+                    f"both flatten to {stem}.parquet"
+                )
+            written[stem] = info.filename
             member_path = partition / f"{stem}.parquet"
             meta = write_member_parquet(
                 member_path, zf.read(info),

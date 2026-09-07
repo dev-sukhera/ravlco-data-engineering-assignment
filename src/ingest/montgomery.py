@@ -81,8 +81,8 @@ from .. import config
 from .http import HttpClient
 from .watermark import (
     WatermarkStore,
-    bronze_partition,
     new_load_ts,
+    new_partition,
     row_sha256,
     write_bytes,
     write_rows_parquet,
@@ -208,8 +208,10 @@ def ingest_dataset(
     """Keyset-paginate one dataset into bronze. Returns a run summary."""
     base = config.sources()["montgomery"]["base"].rstrip("/")
     url = f"{base}/{dataset_id}.json"
-    load_ts = load_ts or new_load_ts()
-    partition = bronze_partition(SOURCE, dataset_id, load_ts)
+    # Allocate the directory first and take load_ts from it, so the partition
+    # name and every recorded load_ts are the same string by construction.
+    partition = new_partition(SOURCE, dataset_id, load_ts or new_load_ts())
+    load_ts = partition.name
 
     state = store.get(SOURCE, dataset_id)
     if state:
