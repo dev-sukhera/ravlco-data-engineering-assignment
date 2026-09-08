@@ -127,14 +127,18 @@ party_snap_search_distance_m = 2000.0
 # the crash-only (production-truth) run
 # ---------------------------------------------------------------------------
 # Every gold crash evaluated with NO identity layer -- the table that answers
-# the memo's per-jurisdiction lawfulness question. Stratified per jurisdiction
-# rather than all 268,493 rows: the decision is a pure function of
-# (jurisdiction, provenance, dates, geo tier), so the distinct outcomes
-# saturate in the low thousands and the full run would spend minutes
-# re-deriving the same handful of answers. `crash_only_sample_per_jurisdiction
-# = 0` runs all of them; the manifest records which was used and the sample is
-# taken deterministically by ORDER BY crash_sk.
-crash_only_sample_per_jurisdiction = 2000
+# the memo's per-jurisdiction lawfulness question, and the only place the
+# product's honest output is computed rather than argued.
+#
+# 0 means ALL OF THEM, and that is the default because it was MEASURED rather
+# than assumed to be expensive: the whole corpus, 268,493 rows, evaluates in
+# 56 s on one core (`time python -m src.compliance.build --crash-only-limit 0`).
+# A stratified sample was the original design and it is still available -- set
+# a positive number and rows are taken deterministically by ORDER BY crash_sk,
+# never randomly -- but a memo that says "zero deliverable leads" should be
+# able to say it about the whole corpus and not about a sample of it. The
+# manifest records which was used.
+crash_only_sample_per_jurisdiction = 0
 crash_only_seed                    = 20260901
 
 # ---------------------------------------------------------------------------
