@@ -1,0 +1,26 @@
+Historical schema-drift replay — captured 2026-09-08
+
+Command:
+python -m src.transform.drift --dataset mmzv-x632 --column driver_substance_abuse --vocabulary-asof 2023-12-27
+
+[DRIFT] mmzv-x632.driver_substance_abuse  rows=232411  accepted_vocabulary=12
+  9 value(s) outside the accepted vocabulary, 60295 row(s)
+  Not Suspect of Alcohol Use, Not Suspect of Drug Use: 51181 rows; first crash 2023-12-28
+  Unknown, Unknown: 7038 rows; first crash 2023-12-28
+  Suspect of Alcohol Use, Not Suspect of Drug Use: 1464 rows; first crash 2024-01-01
+  remaining six new-generation combinations: 612 rows
+
+Command:
+python -m src.transform.drift --dataset mmzv-x632 --column injury_severity --vocabulary-asof 2023-12-27
+
+[DRIFT] mmzv-x632.injury_severity  rows=232411  accepted_vocabulary=5
+  5 value(s) outside the accepted vocabulary, 55677 row(s)
+  No Apparent Injury: 46038 rows
+  Suspected Minor Injury: 5154 rows
+  Possible Injury: 3931 rows
+  Suspected Serious Injury: 480 rows
+  Fatal Injury: 74 rows
+
+Both commands exit 1 by design. The current reviewed vocabulary exits 0; the
+Dagster montgomery_vocabulary_drift check uses that vocabulary and blocks
+downstream materialisation if any future token is unmapped.
