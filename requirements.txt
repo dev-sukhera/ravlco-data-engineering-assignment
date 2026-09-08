@@ -17,3 +17,13 @@ tenacity>=9.0
 osmnx>=2.1
 python-dateutil>=2.9
 pytest>=8.0
+
+# notebooks/eda_bronze_silver.ipynb
+ipykernel>=6.29
+matplotlib>=3.9
+
+# Phase 5 spatial analysis (src/analysis/)
+esda>=2.10          # Moran's I / LISA, Getis-Ord Gi*, Benjamini-Hochberg fdr()
+libpysal>=4.15      # the W spatial-weights object esda takes
+scikit-learn>=1.9   # KernelDensity + GroupKFold for the blocked-CV bandwidth
+scipy>=1.18         # cKDTree for the ST-DBSCAN two-radius neighbourhood
