@@ -56,7 +56,7 @@
 version: 1.0.0
 ruleset_id: crash-to-contact
 verified_on: 2026-09-08
-content_sha256_prefix: fe34744058f1ba0b
+content_sha256_prefix: 30d2ffb5208d191b
 
 # Mirrored in config/compliance.toml; the loader asserts they agree.
 window_arithmetic: exclusive
@@ -499,7 +499,14 @@ live_solicitation:
       actor: [ATTORNEY_OR_AGENT]
       contact_kind: [LIVE_TELEPHONE, IN_PERSON, REAL_TIME_ELECTRONIC]
     unless:
-      jurisdiction: [MD, FL, TX]
+      # A LIST of clauses, i.e. "unless ANY of these holds". Two independent
+      # exceptions apply here -- a jurisdiction with its own rule row above,
+      # and a valid consumer-direct consent -- and a single mapping is an AND,
+      # which would have required BOTH before lifting the bar. Without this the
+      # catch-all barred every consented record in a new jurisdiction, which is
+      # exactly the Ohio live-defence case.
+      - jurisdiction: [MD, FL, TX]
+      - consent_valid: [true]
     params: {}
     effective_from: 2018-08-01
     effective_to: null
@@ -608,7 +615,12 @@ channel_gates:
         permanently disconnected after the consent date; the consent no longer
         reaches the person now holding it.
       when:
-        rnd_response: [YES]
+        # QUOTED, and it has to be: YAML 1.1 parses a bare YES as the boolean
+        # true, so `rnd_response: [YES]` silently becomes `[True]` and the rule
+        # never matches the string "YES" that the data actually carries. The
+        # gate then passes every reassigned number in the corpus. Caught by
+        # tests/test_compliance.py::test_rnd_has_three_states_and_a_silence.
+        rnd_response: ["YES"]
       params: {}
       effective_from: 2021-11-15
       effective_to: null
@@ -621,7 +633,7 @@ channel_gates:
         response. "No Data" means the database could not answer, which
         withholds the safe harbour rather than granting it.
       when:
-        rnd_response: [NO_DATA]
+        rnd_response: ["NO_DATA"]
       params: {}
       effective_from: 2021-11-15
       effective_to: null

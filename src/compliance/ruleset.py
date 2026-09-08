@@ -223,7 +223,7 @@ class Rule:
     legal_basis: str
     params: dict[str, Any]
     when: dict[str, list[Any]]
-    unless: dict[str, list[Any]]
+    unless: list[dict[str, list[Any]]]
     effective_from: date | None
     effective_to: date | None
     family: str
@@ -243,9 +243,20 @@ class Rule:
         return True
 
     def matches(self, record: Mapping[str, Any]) -> bool:
-        return _matches(self.when, record) and not (
-            self.unless and _matches(self.unless, record)
-        )
+        """Does this rule fire on this record?
+
+        `when` is one conjunction. `unless` is a list of conjunctions and ANY
+        of them suppresses the rule -- because a legal bar typically has
+        several independent exceptions, and modelling them as a single AND
+        would require every exception to hold at once before lifting it. The
+        catch-all live-solicitation rule is the live case: it is lifted by a
+        jurisdiction having its own rule row OR by a valid consumer-direct
+        consent, and requiring both barred every consented record in a new
+        jurisdiction.
+        """
+        if not _matches(self.when, record):
+            return False
+        return not any(_matches(clause, record) for clause in self.unless)
 
 
 def _matches(clause: Mapping[str, Sequence[Any]], record: Mapping[str, Any]) -> bool:
@@ -276,6 +287,20 @@ def _member(value: Any, allowed: Sequence[Any]) -> bool:
     return False
 
 
+def _unless_clauses(value: Any) -> list[dict[str, list[Any]]]:
+    """Normalise `unless` to a list. A bare mapping is a one-element list.
+
+    Both spellings are accepted so a rule with a single exception stays
+    readable as a mapping and only the rules that genuinely have several pay
+    for the list syntax.
+    """
+    if not value:
+        return []
+    if isinstance(value, Mapping):
+        return [dict(value)]
+    return [dict(clause) for clause in value]
+
+
 def _rules_from(entries: Any, family: str) -> list[Rule]:
     out: list[Rule] = []
     for entry in entries or []:
@@ -286,7 +311,7 @@ def _rules_from(entries: Any, family: str) -> list[Rule]:
                 legal_basis=" ".join(str(entry.get("legal_basis") or "").split()),
                 params=dict(entry.get("params") or {}),
                 when=dict(entry.get("when") or {}),
-                unless=dict(entry.get("unless") or {}),
+                unless=_unless_clauses(entry.get("unless")),
                 effective_from=_as_date(entry.get("effective_from")),
                 effective_to=_as_date(entry.get("effective_to")),
                 family=family,
