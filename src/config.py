@@ -76,6 +76,13 @@ def model() -> dict[str, Any]:
 
 
 @functools.cache
+def scoring() -> dict[str, Any]:
+    """config/scoring.toml -- auditable lead weights and backtest parameters."""
+    with (CONFIG_DIR / "scoring.toml").open("rb") as fh:
+        return tomllib.load(fh)
+
+
+@functools.cache
 def compliance() -> dict[str, Any]:
     """config/compliance.toml [compliance] -- the eligibility engine's run.
 

@@ -1,0 +1,40 @@
+# Lead priority is an a-priori additive rule, not a fitted model.  Every cap is
+# deliberately smaller than one 25-point severity step; all five non-severity
+# terms together can contribute at most 20 points.
+[scoring]
+as_of_date = "2026-09-01" # Same frozen decision date as compliance.
+rounding_precision = 2 # Stable CSV/parquet boundary without false precision.
+recency_half_life_days = 90.0 # Freshness halves each quarter.
+recency_max_points = 8.0 # Useful tie-breaking signal; below a severity step.
+vulnerable_road_user_points = 5.0 # Pedestrian/cyclist involvement raises seriousness.
+hit_run_points = 3.0 # Crash conduct context, kept secondary to injury severity.
+adverse_weather_points = 2.0 # Small context term because source coding is coarse.
+era5_precipitation_threshold_mm = 0.1 # Trace precipitation is not treated as adverse.
+severe_threshold = 3 # Suspected serious injury or worse in the conformed ordinal.
+holdout_year = 2024 # Parameters predate the fixed evaluation year.
+later_holdout_start_year = 2025 # Montgomery's partial recent window is reported separately.
+top_fraction = 0.10 # Operational precision-at-top-decile metric.
+folds = 5 # Enough spatial groups per fold without tiny test partitions.
+random_seed = 20260901 # Reproducible negative-control split only.
+blocking_keys = ["county", "h3_r7"] # Spatial CV; never scoring features.
+tie_break = ["priority_score DESC", "incident_date DESC", "lead_id ASC"]
+features = ["severity", "recency", "vulnerable_road_user", "hit_run", "road_context", "adverse_weather"]
+
+[scoring.severity_points]
+"0" = 0.0 # Unknown stays unknown and never outranks a known low-severity crash.
+"1" = 25.0 # Possible/no apparent injury baseline step.
+"2" = 50.0 # Suspected minor injury.
+"3" = 75.0 # Suspected serious injury.
+"4" = 100.0 # Fatal injury.
+"5" = 125.0 # Highest conformed category, retained for schema completeness.
+
+[scoring.road_context_points]
+"1" = 2.0 # Interstate/freeway context.
+"2" = 1.5 # Principal arterial context.
+"3" = 1.0 # Minor arterial context.
+high_speed = 1.0 # OSM fallback only for a successful snap at >=45 mph.
+
+[scoring.denylist]
+tables = ["dim_block_group"]
+columns = ["B19013", "B01003", "B25", "median_income", "tenure", "vehicle_availability", "zip5", "census_bg", "tract_geoid", "jurisdiction", "contact", "consent", "line_type"]
+feature_exceptions = ["jurisdiction is an output slice only", "census_bg and tract_geoid are spatial blocking keys only"]
