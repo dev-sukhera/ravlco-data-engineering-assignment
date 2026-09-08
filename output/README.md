@@ -24,7 +24,7 @@ every byte of this directory and of `data/gold/` for every fixture name, street 
 phone number.
 
 **Nested objects are JSON-encoded in their cells.** `geo`, `contact`, `consent`,
-`reason_codes` and `legal_basis` are objects and arrays in the contract, so each is
+`reason_codes`, `legal_basis` and `score_components` are objects and arrays in the contract, so each is
 written as a JSON document inside one CSV field (with `"` doubled, per RFC 4180 —
 any spreadsheet or `csv` reader handles it). Key order inside each object follows the
 contract rather than being sorted, so a cell is readable. `src/compliance/build.py`
