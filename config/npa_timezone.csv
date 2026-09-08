@@ -1,0 +1,90 @@
+# NANP area code -> the SET of IANA zones it can reach. FALLBACK ONLY.
+#
+# 16 C.F.R. 310.4(c) and 47 C.F.R. 64.1200(c)(1) key the calling window to the
+# CALLED PARTY'S LOCATION, and ASSIGNMENT.md 5c is explicit that "because of
+# number portability and VoIP, NPA-NXX is not reliable evidence of physical
+# location". So this table is never the primary source. src/geo/tz.py resolves
+# the zone from the party's COORDINATE; this file supplies the second opinion
+# that 5c requires be INTERSECTED with it when the two disagree.
+#
+# Why a committed CSV and not the `phonenumbers` package
+# ------------------------------------------------------
+# `phonenumbers` ships a per-prefix timezone map and would answer this with an
+# import. It is not used, for two reasons. (1) The fallback must be AUDITABLE:
+# a reviewer has to be able to see that 850 maps to two zones, and that 915
+# maps to Mountain rather than to the Texas default, without reading a
+# vendored data file. This table is the evidence for the two trap rows in
+# ai docs/implementation/phase6-compliance-report.md. (2) Adding a dependency
+# with a bundled metadata corpus to answer a question about ~40 area codes is
+# disproportionate, and a bundled corpus has its own vintage that nothing in
+# this pipeline would be pinning or hashing.
+#
+# SCOPE, stated rather than implied: the three in-scope jurisdictions in full,
+# plus the area codes the tests need. An NPA that is NOT in this table returns
+# the EMPTY set -- which is a THIRD answer, distinct from "agrees" and from
+# "disagrees". The window then rests on the coordinate alone and `basis` says
+# so. It never silently becomes the state default.
+#
+# `zones` is semicolon-separated and ORDERED so the file is diffable. A row
+# with two zones is a genuinely split area code, and `split` marks it: those
+# are the rows where a naive single-value NPA table is wrong for part of its
+# own territory.
+#
+# Verified 2026-09-08 against the NANPA area-code territories and the IANA
+# zone boundaries. Where an NPA straddles a zone line for only a handful of
+# exchanges it is still marked split -- a fallback that is wrong for 1% of a
+# territory is wrong, and the intersection rule is what makes being wrong safe.
+npa,zones,split,notes
+202,America/New_York,false,District of Columbia
+210,America/Chicago,false,"TX San Antonio"
+214,America/Chicago,false,"TX Dallas"
+227,America/New_York,false,"MD overlay (301/240 region)"
+239,America/New_York,false,"FL Fort Myers"
+240,America/New_York,false,"MD Montgomery/Frederick overlay of 301"
+254,America/Chicago,false,"TX Waco/Killeen"
+281,America/Chicago,false,"TX Houston overlay"
+301,America/New_York,false,"MD Montgomery/Frederick/Western Maryland. Fixture rows P001/P002/P004 and most of the Montgomery bulk."
+305,America/New_York,false,"FL Miami/Keys"
+321,America/New_York,false,"FL Orlando/Space Coast"
+325,America/Chicago,false,"TX Abilene/San Angelo"
+346,America/Chicago,false,"TX Houston overlay"
+352,America/New_York,false,"FL Gainesville/Ocala"
+361,America/Chicago,false,"TX Corpus Christi"
+386,America/New_York,false,"FL Daytona/Lake City"
+407,America/New_York,false,"FL Orlando"
+409,America/Chicago,false,"TX Beaumont/Galveston"
+410,America/New_York,false,"MD Baltimore/Eastern Shore"
+415,America/Los_Angeles,false,"CA San Francisco. Present for the synthetic Eastern-coords / Pacific-NPA disagreement test."
+430,America/Chicago,false,"TX Tyler overlay"
+432,America/Chicago;America/Denver,true,"TX Midland/Odessa/Big Bend. SPLIT: most of the territory is Central, but the far-west counties toward Hudspeth are Mountain."
+443,America/New_York,false,"MD Baltimore overlay"
+469,America/Chicago,false,"TX Dallas overlay"
+512,America/Chicago,false,"TX Austin"
+561,America/New_York,false,"FL Palm Beach"
+667,America/New_York,false,"MD Baltimore overlay"
+682,America/Chicago,false,"TX Fort Worth overlay"
+689,America/New_York,false,"FL Orlando overlay"
+713,America/Chicago,false,"TX Houston"
+726,America/Chicago,false,"TX San Antonio overlay"
+727,America/New_York,false,"FL Pinellas / St Petersburg"
+737,America/Chicago,false,"TX Austin overlay"
+754,America/New_York,false,"FL Broward overlay"
+772,America/New_York,false,"FL Treasure Coast"
+786,America/New_York,false,"FL Miami overlay"
+806,America/Chicago,false,"TX Panhandle / Lubbock. Central despite the longitude."
+813,America/New_York,false,"FL Tampa"
+817,America/Chicago,false,"TX Fort Worth"
+830,America/Chicago,false,"TX Del Rio/Uvalde"
+832,America/Chicago,false,"TX Houston overlay"
+850,America/New_York;America/Chicago,true,"FL Panhandle. SPLIT: Tallahassee is Eastern, Pensacola is Central. This is fixture row P008 and it is why the fallback returns a SET."
+863,America/New_York,false,"FL Lakeland/Sebring"
+903,America/Chicago,false,"TX Tyler/Texarkana"
+904,America/New_York,false,"FL Jacksonville"
+915,America/Denver,false,"TX El Paso/Hudspeth. Mountain, not the Texas default of Central. Fixture row P007."
+940,America/Chicago,false,"TX Denton/Wichita Falls"
+941,America/New_York,false,"FL Sarasota/Bradenton"
+945,America/Chicago,false,"TX Dallas overlay"
+954,America/New_York,false,"FL Broward"
+956,America/Chicago,false,"TX Rio Grande Valley"
+972,America/Chicago,false,"TX Dallas overlay"
+979,America/Chicago,false,"TX Bryan/Brazoria"

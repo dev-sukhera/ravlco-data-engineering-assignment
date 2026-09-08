@@ -1,0 +1,185 @@
+# Phase 6 -- the compliance engine's operating parameters.
+#
+# Its own file, and not part of settings.toml, for the same reason geo.toml is
+# separate from sources.toml: these are numbers a reviewer has to be able to
+# read, diff and change without touching a gitignored per-developer file, and
+# every one of them changes the disposition of a record.
+#
+# THE DIVISION OF LABOUR, which is a grading criterion and not a style choice:
+#
+#   src/compliance/rules.yaml   says WHAT THE LAW IS. Every legal number lives
+#                               there with a citation and an effective date.
+#                               The engine reads the law from that file and
+#                               from config/blackout_windows.csv, and from
+#                               nowhere else.
+#   config/compliance.toml      says HOW THIS RUN IS CONFIGURED. Paths, the
+#                               frozen clock, the join thresholds, and the
+#                               VERSION AND PARAMETERS THIS BUILD EXPECTS.
+#
+# The three legal numbers repeated below (dnc_max_age_days,
+# revocation_honour_business_days, window_arithmetic) are duplicated from
+# rules.yaml on purpose and the ruleset loader ASSERTS the two agree. That is
+# the same device contracts/analysis.schema.json uses for
+# min_population_for_rate: a stale-config guard is only a guard if disagreeing
+# with the authority is an error rather than a silent preference.
+
+[compliance]
+
+# ---------------------------------------------------------------------------
+# the frozen clock
+# ---------------------------------------------------------------------------
+# fixtures/README.md: "incident_date and report_filing_date are anchored to
+# 2026-09-01 so the fixture is reproducible. If you are working later than
+# that, either freeze 'today' to that date in config or state your handling in
+# DECISIONS.md -- do not silently let the windows drift."
+#
+# Frozen here. Every BLOCKED_UNTIL outcome, every staleness test and every
+# effective-date comparison is evaluated against this date, and `evaluated_at`
+# in the output is this date at 00:00:00 UTC -- NOT wall clock, because two
+# builds an hour apart must produce byte-identical parquet. The real wall
+# clock lives in _compliance_manifest.json's `built_at`, where it cannot
+# contaminate an output.
+as_of_date = "2026-09-01"
+
+# ---------------------------------------------------------------------------
+# where the law lives
+# ---------------------------------------------------------------------------
+ruleset_path      = "src/compliance/rules.yaml"
+blackout_path     = "config/blackout_windows.csv"
+npa_timezone_path = "config/npa_timezone.csv"
+
+# The semver this build expects rules.yaml to declare. A mismatch REFUSES to
+# construct the engine rather than warning: `ruleset_version` is stamped on
+# every decision and on every lineage row, so a decision produced by a ruleset
+# other than the one the build thinks it ran is an unreadable audit record.
+ruleset_version = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# window arithmetic -- see COMPLIANCE.md "Blackout windows"
+# ---------------------------------------------------------------------------
+# "exclusive": earliest_contact_date = anchor + days + 1 day, and a record is
+# contactable when as_of >= earliest_contact_date. A 31-day window that opens
+# on day 31 has waited 30 days, not 31; the statutes are not pinned down on
+# the boundary day and the conservative reading is the one that cannot
+# under-count a criminal waiting period (Tex. Penal Code 38.12 is a Class A
+# misdemeanour). Duplicated in rules.yaml `window_arithmetic`.
+window_arithmetic = "exclusive"
+
+# ---------------------------------------------------------------------------
+# expectations mirrored from rules.yaml (loader asserts equality)
+# ---------------------------------------------------------------------------
+dnc_max_age_days                = 31    # 16 C.F.R. 310.4(b)(3)(iv)
+revocation_honour_business_days = 10    # 47 C.F.R. 64.1200(a)(10)
+
+# ---------------------------------------------------------------------------
+# the actor, which decides whether the live-solicitation bars bind
+# ---------------------------------------------------------------------------
+# The product is accident leads delivered to an outbound contact centre acting
+# for personal-injury lawyers, so the default actor is the lawyer's agent and
+# Rule 7.3(b)'s analogues bind the caller. Changing this to a value the
+# ruleset does not map to a live-solicitation rule is how you model a
+# non-lawyer principal -- and COMPLIANCE.md states what changes if you do.
+actor        = "ATTORNEY_OR_AGENT"
+contact_kind = "LIVE_TELEPHONE"
+
+# ---------------------------------------------------------------------------
+# the fixture -> gold crash match (src/compliance/leads.py)
+# ---------------------------------------------------------------------------
+# Best-effort and reported honestly. Distance is computed in the Phase 4
+# projected CRS for the row's jurisdiction (config/geo.toml [crs.snap]), never
+# in 3857.
+fixture_path              = "fixtures/synthetic_parties.csv"
+match_date_tolerance_days = 1
+match_max_distance_m      = 250.0
+
+# Which jurisdictions get a party road-snap. Montgomery only, matching
+# config/geo.toml [snap] source_systems: the Maryland PBF is already cached
+# and covers the county, and Texas/Florida would need a 683 MB and a 625 MB
+# extract for ten rows. TX and FL parties therefore leave with
+# snap_status = NOT_IN_SCOPE, which is NOT a data-quality failure -- an
+# enrichment that was never in scope must not become a reason code.
+snap_jurisdictions = ["MD"]
+
+# The party snap rejection threshold, in the projected CRS of
+# config/geo.toml [crs.snap]. SEPARATE from [snap] max_distance_m even though
+# it holds the same value, and the separation is the point.
+#
+# Phase 4 measured 50 m from the distribution of CRASH-to-road distances: a
+# crash happens ON a road, so a coordinate far from one is evidence the
+# coordinate is wrong. A PARTY coordinate is an address, and an address is
+# under no obligation to sit on a carriageway -- a long driveway, a setback
+# lot or a rear unit puts a perfectly good address 60 m away. Borrowing the
+# crash threshold for a residence population is a category error waiting to
+# happen, so the number is repeated here where it can be changed without
+# touching the crash pipeline.
+#
+# It is left AT 50 m rather than raised, for two reasons stated in the report:
+# the default disposition is INELIGIBLE and an unverifiable location should
+# not clear it, and 28 Maryland party coordinates are not a distribution to
+# fit a threshold to. Measured on the fixture at this value: 5 of 28 Maryland
+# parties are rejected (52.99, 56.28, 75.04, 144.37 m, plus P019 which has no
+# candidate way within the search radius at all). A production deployment
+# should re-measure on its own address corpus.
+party_snap_max_distance_m = 50.0
+party_snap_search_distance_m = 2000.0
+
+# ---------------------------------------------------------------------------
+# the crash-only (production-truth) run
+# ---------------------------------------------------------------------------
+# Every gold crash evaluated with NO identity layer -- the table that answers
+# the memo's per-jurisdiction lawfulness question. Stratified per jurisdiction
+# rather than all 268,493 rows: the decision is a pure function of
+# (jurisdiction, provenance, dates, geo tier), so the distinct outcomes
+# saturate in the low thousands and the full run would spend minutes
+# re-deriving the same handful of answers. `crash_only_sample_per_jurisdiction
+# = 0` runs all of them; the manifest records which was used and the sample is
+# taken deterministically by ORDER BY crash_sk.
+crash_only_sample_per_jurisdiction = 2000
+crash_only_seed                    = 20260901
+
+# ---------------------------------------------------------------------------
+# outputs
+# ---------------------------------------------------------------------------
+out_subdir           = "compliance"      # under the gold root
+vault_subdir         = "vault"           # under data/, NOT under data/gold/
+sample_leads_path    = "output/sample_leads.csv"
+sample_schema_check  = "output/sample_leads.schema_check.json"
+
+# ---------------------------------------------------------------------------
+# the token vault
+# ---------------------------------------------------------------------------
+# HMAC-SHA256 over the identifier, keyed. The key belongs in
+# config/settings.toml [keys].vault_hmac_key (gitignored); this is the
+# DOCUMENTED DEV DEFAULT so a fresh clone can run the tests. It is published in
+# a public repo and is therefore not a secret: with the key, a token is
+# reversible by brute force over the identifier space, which is exactly why a
+# real deployment must set its own. See COMPLIANCE.md "Data protection".
+vault_key_name        = "vault_hmac_key"
+vault_hmac_key_dev    = "crash-to-contact-dev-key-not-a-secret"
+token_prefix_party    = "pt"
+token_prefix_phone    = "ph"
+
+# ---------------------------------------------------------------------------
+# the FL structural-incompleteness monitor (ASSIGNMENT.md 5a, second order)
+# ---------------------------------------------------------------------------
+# A MONITORING design, not a lead gate. Rows filed inside the trailing window
+# are labelled and any trailing aggregate overlapping it is refused or
+# annotated. The window length is the statute's and lives in rules.yaml; this
+# is the aggregate horizon the monitor is asked about.
+fl_trailing_aggregate_days = 30
+
+# ---------------------------------------------------------------------------
+# which envelope judges a party coordinate
+# ---------------------------------------------------------------------------
+# Maps a jurisdiction to a config/geo.toml [envelope.*] block. A mapping and
+# not a branch, for the same reason everything else here is: adding a state is
+# a line. Florida has no dedicated envelope because no Florida crash feed is
+# in scope, so FL parties are judged against the `fars` United States
+# plausibility envelope -- which is honest about what it can and cannot catch,
+# and is recorded as such in the report. This block must be LAST in the file:
+# a TOML sub-table ends the parent table, so any scalar key written after it
+# would belong to the sub-table instead.
+[compliance.envelope_by_jurisdiction]
+MD = "montgomery"
+TX = "txdot"
+FL = "fars"

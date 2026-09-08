@@ -76,6 +76,36 @@ def model() -> dict[str, Any]:
 
 
 @functools.cache
+def compliance() -> dict[str, Any]:
+    """config/compliance.toml [compliance] -- the eligibility engine's run.
+
+    Its own file because Phase 6 is the section that decides the outcome and
+    every number in it changes a legal disposition: the frozen `as_of`, the
+    ruleset version this build refuses to run without, the window arithmetic,
+    and the paths to the two files that between them say what the law is
+    (`src/compliance/rules.yaml` and `config/blackout_windows.csv`).
+
+    Deliberately NOT merged into settings.toml, which is gitignored: a
+    reviewer must be able to read and diff the parameters that produced a
+    decision, and a per-developer file is exactly the wrong place for them.
+    """
+    with (CONFIG_DIR / "compliance.toml").open("rb") as fh:
+        return tomllib.load(fh)["compliance"]
+
+
+def compliance_path(name: str) -> Path:
+    """A repo-relative path from [compliance], resolved against REPO_ROOT.
+
+    The config stores `src/compliance/rules.yaml`, not an absolute path, so
+    the file is quotable in the report and identical on every machine. An
+    absolute value is honoured unchanged so a test can point at a tmp_path
+    copy without rewriting the config.
+    """
+    value = Path(str(compliance()[name]))
+    return value if value.is_absolute() else REPO_ROOT / value
+
+
+@functools.cache
 def settings() -> dict[str, Any]:
     """config/settings.toml -- gitignored keys. Falls back to the example file
     so a fresh clone can at least import; callers that need a key must check."""

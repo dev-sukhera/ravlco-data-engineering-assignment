@@ -2,5 +2,5 @@ jurisdiction,record_type,days_from,anchor_field,legal_basis,notes
 FL,crash_report,60,report_filing_date,"Fla. Stat. 316.066(2)","Data-access gate. Binds over the bar rule."
 FL,written_solicitation,30,incident_date,"R. Reg. Fla. Bar 4-7.18(b)(1)(A)",
 TX,written_solicitation,31,incident_date,"Tex. Penal Code 38.12(d)(2)(C)","Class A misdemeanor; felony on repeat."
-MD,,,,,"INCOMPLETE — research and complete this row. See Md. Rule 19-307.3."
+MD,telephone_solicitation,,,"Md. Code Gen. Prov. 4-320; Md. Rule 19-307.3","No waiting period. Channel bar - enforced by rules.yaml source_gates/live_solicitation, codes MD_MVA_TELEPHONE_SOLICITATION_BAR / LIVE_SOLICITATION_PROHIBITED"
 US,aviation_accident,45,incident_date,"49 U.S.C. 1136(g)(2)","Edge case. Included to test your lookup design."
