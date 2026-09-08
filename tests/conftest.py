@@ -458,3 +458,81 @@ def geo_con(geo_root: Path):
         )
     yield con
     con.close()
+
+
+# ---------------------------------------------------------------------------
+# analysis (Phase 5)
+# ---------------------------------------------------------------------------
+
+from src.analysis import build as analysis_build_module  # noqa: E402
+
+# See build_analysis_into: enough permutations for the machinery to run and
+# for the p-value columns to be well-formed, far below what a PUBLISHED
+# corrected map needs.
+ANALYSIS_TEST_PERMUTATIONS = 199
+
+
+def build_analysis_into(dest: Path, geo_root: Path, **kwargs) -> dict:
+    """Run the real analysis build into `dest`. No mocks, same rule as above.
+
+    Two things are turned down from production, and neither weakens an
+    assertion:
+
+    * `permutations` -- production runs 99,999 because that is what the FDR
+      correction needs to be able to reject at all (config/geo.toml carries
+      the arithmetic). The cell universe is the FILLED COUNTY, ~1,942 cells,
+      and it does not shrink with the fixture corpus, so a production-budget
+      run costs the same here as it does on the real data and the suite would
+      spend minutes per build. Every statistical claim in this phase is
+      asserted on synthetic fields with a known answer, not on the fixture
+      corpus, so what these builds are testing is that the PIPELINE runs and
+      its contracts hold.
+    * `skip_kde` is left to the caller. The surface is ~400,000 grid points
+      and is exercised directly in the KDE unit tests.
+    """
+    kwargs.setdefault("permutations", ANALYSIS_TEST_PERMUTATIONS)
+    return analysis_build_module.build_analysis(
+        gold_root=geo_root,
+        out_root=dest,
+        reference_root=reference_root(),
+        figure_dir=dest / "figures",
+        small_corpus=not using_full_bronze(),
+        **kwargs,
+    )
+
+
+@pytest.fixture(scope="session")
+def analysis_root(tmp_path_factory, geo_root: Path) -> Path:
+    """The Phase 5 outputs, built once per session from the session's crash_geo.
+
+    Built over the FIXTURE corpus by default, which is a few hundred Montgomery
+    crashes -- enough to exercise every code path and every contract, not
+    enough to make a statistical claim. The full-corpus numbers in ANALYSIS.md
+    come from `python -m src.analysis.build` against `data/gold`, and the
+    tests that assert on them are guarded on `CRASH_TEST_FULL_BRONZE`.
+    """
+    dest = tmp_path_factory.mktemp("analysis")
+    try:
+        build_analysis_into(dest, geo_root, skip_figures=True)
+    except ValueError as exc:  # no crashes in the study area at fixture scale
+        pytest.skip(f"analysis build has no corpus on this bronze: {exc}")
+    return dest
+
+
+@pytest.fixture(scope="session")
+def analysis_manifest(analysis_root: Path) -> dict:
+    return json.loads((analysis_root / "_analysis_manifest.json").read_text())
+
+
+@pytest.fixture(scope="session")
+def analysis_con(analysis_root: Path):
+    """`analysis_<table>` views over everything Phase 5 wrote."""
+    con = c.connect()
+    for path in sorted(analysis_root.glob("*.parquet")):
+        p = str(path).replace("'", "''")
+        con.execute(
+            f"CREATE OR REPLACE VIEW analysis_{path.stem} AS "
+            f"SELECT * FROM read_parquet('{p}')"
+        )
+    yield con
+    con.close()
