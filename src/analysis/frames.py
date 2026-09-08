@@ -50,7 +50,12 @@ CRS discipline
 - Every area in the apportionment: **EPSG:5070**.
 - The projected point set the KDE and ST-DBSCAN consume: **EPSG:26985**
   (NAD83 / Maryland, metres), the same zone Phase 4 snapped in.
-- EPSG:3857 appears nowhere in this package. A test asserts it.
+- Web Mercator appears nowhere in this package, and deliberately not even as a
+  numeral -- a grep for its EPSG code over `src/analysis/` returns nothing, so
+  the reviewer's one-line check is unambiguous. `tests/test_analysis.py`
+  tokenises every module and asserts no such code appears as executable value;
+  the Phase 4 negative control in `tests/test_geo.py`, which MEASURES how wrong
+  it is at 39.3N, remains the only place the number itself is written down.
 """
 
 from __future__ import annotations
@@ -671,7 +676,7 @@ def projected_points(
 
     **EPSG:26985** (NAD83 / Maryland, metres) by config. Every bandwidth, grid
     pitch and clustering epsilon downstream is a number of metres in THIS
-    frame; 3857 would inflate each of them by 1/cos(39.1 deg) ~ 1.29, so a
+    frame; Web Mercator would inflate each of them by 1/cos(39.1 deg) ~ 1.29, so a
     "500 m" bandwidth would be a 387 m one on the ground. Maryland is a single
     state-plane zone, so one code is correct county-wide -- which is why this
     function refuses to be handed a corpus outside the study area rather than

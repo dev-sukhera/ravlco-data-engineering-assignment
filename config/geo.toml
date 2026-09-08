@@ -433,6 +433,23 @@ bandwidth_min_m = 100.0
 bandwidth_max_m = 16000.0
 bandwidth_candidates = 16
 cv_folds = 5
+# Where the Gaussian kernel is cut off, in standard deviations, for the
+# binned-convolution surface. 4 sigma leaves 0.03% of a 2-D Gaussian's mass
+# outside the kernel -- an order of magnitude inside the 2% tolerance the
+# integral check applies -- and the convolution cost is quadratic in this
+# number, so 6 sigma would more than double it for nothing.
+#
+# The surface is drawn by convolving a binned point count rather than by
+# evaluating sklearn's tree estimator at every grid cell, and that is a
+# MEASURED decision. The published grid is ~402,000 cells against 70,692
+# crashes; `KernelDensity.score_samples` over it ran for more than 25 minutes
+# per bandwidth on the real corpus and there are three distinct bandwidths.
+# A kernel density estimate is by definition the point measure convolved with
+# the kernel, so `scipy.ndimage.gaussian_filter` on the 2-D histogram computes
+# the same object in O(grid) rather than O(grid x points). The build verifies
+# the two agree on a sample of grid cells on every run and records
+# `max_relative_error_vs_exact` in the manifest. See src/analysis/kde.py.
+truncate_sigma = 4.0
 # Folds are blocked by H3 r7 cell (~5.2 km2), NOT drawn at random. Random
 # folds put a point and its 200 m neighbour on opposite sides of the split, so
 # the held-out log-likelihood is scored on points the training set has
@@ -452,14 +469,43 @@ practitioner_bandwidth_m = 500.0
 cv_sample_size = 8000
 
 [analysis.st_dbscan]
-# Two radii, and they are not interchangeable: 300 m is "the same corridor"
-# (about half an r8 cell, and well above the ~10 m geocoding precision), 6
-# hours is "the same part of the same day". sklearn's DBSCAN takes ONE metric,
-# so the neighbourhood is built directly as a sparse 0/1 matrix that is true
-# only when BOTH thresholds hold -- see src/analysis/st_dbscan.py.
+# Two radii, and they are not interchangeable: a distance and a duration have
+# no exchange rate, which is why sklearn's single-metric DBSCAN cannot express
+# this and src/analysis/st_dbscan.py builds the two-condition neighbourhood
+# directly.
+#
+# CHOSEN FROM A MEASURED SWEEP, not from taste. The first attempt
+# (300 m / 6 h / 10) returned ZERO clusters on 70,692 crashes -- ten crashes
+# within 300 m and six hours of each other is a pile-up, not a pattern. The
+# full sweep, reproduced by the script named in the Phase 5 report:
+#
+#   eps_m  eps_h  min_samples   clusters   median size   median span (days)
+#     150     24            4         10           4.0          0.97
+#     150     72            4         83           4.0          3.27
+#     150    168            5        133           5.0         10.63
+#     300     24            5          7           5.0          1.14
+#     300     72            4        491           4.0          3.84
+#     300     72            5        120           5.0          4.18   <-- chosen
+#     300    168            5        774           6.0         13.96
+#     300    168            8         59           9.0         13.05
+#
+# 300 m / 72 h / 5 is the setting where the clusters are numerous enough to be
+# a finding (120), large enough not to be a coincidence of three cars (median
+# 5), and TIGHT IN TIME: a median span of 4.2 days against the 2,347 days the
+# same spatial epsilon gives with the time condition removed. That contrast --
+# a factor of 560 -- is the thing the assignment asks to see, and it is what
+# makes the space-only run the control rather than an ablation.
+#
+# What this does NOT find, stated because the assignment's phrasing invites it:
+# a "recurring Friday-night corridor". ST-DBSCAN over LINEAR time finds
+# BURSTS -- a work zone, an ice storm, a fortnight of signal misbehaviour --
+# because two crashes on consecutive Fridays are 168 hours apart and no
+# reasonable eps_time links them without also linking everything in between.
+# Weekly recurrence needs a cyclic time coordinate or a per-cell day-of-week
+# profile, and the report says so rather than relabelling bursts as recurrence.
 eps_space_m = 300.0
-eps_time_h = 6.0
-min_samples = 10
+eps_time_h = 72.0
+min_samples = 5
 # The contrast run: the same spatial epsilon with the time condition removed,
 # which is the year-long smear the assignment names.
 report_top_clusters = 10
