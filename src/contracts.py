@@ -58,6 +58,11 @@ from .config import REPO_ROOT
 CONTRACTS_DIR = REPO_ROOT / "contracts"
 BRONZE_CONTRACT = CONTRACTS_DIR / "bronze.schema.json"
 SILVER_CONTRACT = CONTRACTS_DIR / "silver.schema.json"
+# Phase 6. Named here so a caller says `contracts.COMPLIANCE_CONTRACT` rather
+# than rebuilding the path, which is how the gold and analysis contracts
+# already reach their builds.
+COMPLIANCE_CONTRACT = CONTRACTS_DIR / "compliance.schema.json"
+LEAD_OUTPUT_CONTRACT = CONTRACTS_DIR / "lead_output.schema.json"
 
 # JSON Schema type -> the DuckDB logical types that satisfy it. Deliberately
 # permissive within a family (an INTEGER column satisfies "integer" whether it
@@ -75,6 +80,16 @@ _TYPE_FAMILIES: dict[str, tuple[str, ...]] = {
     "timestamp": ("TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP_NS",
                   "TIMESTAMP_MS", "TIMESTAMP_S"),
     "time": ("TIME",),
+    # Added in Phase 6. `contracts/compliance.schema.json` describes a table
+    # whose grain is one LEAD, and a lead's `geo`, `contact` and `consent` are
+    # nested objects in the output contract the downstream contact centre
+    # already consumes -- so the parquet carries them as STRUCT and the two
+    # decision arrays as LIST. Without these two families the validator would
+    # report every one of them as a type violation, and flattening them purely
+    # to satisfy the validator would mean the parquet no longer had the shape
+    # `contracts/lead_output.schema.json` specifies.
+    "object": ("STRUCT",),
+    "array": ("LIST",),
 }
 
 
@@ -122,7 +137,19 @@ def table_contract(contract: dict[str, Any], table: str) -> dict[str, Any]:
 
 
 def _duck_family(duck_type: str) -> str:
-    t = duck_type.upper()
+    """The contract type family a DuckDB logical type satisfies.
+
+    Two normalisations, both added in Phase 6 for the compliance tables:
+    DuckDB renders a list as `<element>[]` and a struct as `STRUCT(...)`, and
+    the contract cares about the CONTAINER, not the element -- `reason_codes`
+    is an array of strings whether the element type prints as VARCHAR or as
+    something else. The element type is checked by the row rules instead
+    (`len(legal_basis) = len(reason_codes)`, `list_contains(...)`), which is
+    where a container's contents can actually be asserted.
+    """
+    t = duck_type.upper().strip()
+    if t.endswith("[]"):
+        return "array"
     base = t.split("(")[0].strip()
     for family, members in _TYPE_FAMILIES.items():
         if base in members:

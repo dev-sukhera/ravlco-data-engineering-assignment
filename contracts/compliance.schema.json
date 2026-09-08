@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crash-to-contact/contracts/compliance.schema.json",
+  "title": "Compliance layer contract v1.0.0",
+  "description": "Phase 6. Four tables under data/gold/compliance/. `leads` carries one row per fixture-derived lead in the shape of contracts/lead_output.schema.json (which is NOT modified and is validated against separately, row by row, with jsonschema format checking on) plus the provenance columns a warehouse needs and a downstream consumer does not. `decision_lineage` is append-only and content-addressed. `crash_only_decisions` is the production-truth table -- every gold crash evaluated with no identity layer, which is the memo's answer to the per-jurisdiction lawfulness question. `exclusion_by_code` is the exclusion table itself, over both runs. Same dialect as bronze/silver/gold/analysis: typed properties, x-column-order-is-contract, unique_keys, and row_rules for the cross-column invariants JSON Schema cannot express.",
+  "tables": {
+    "compliance.leads": {
+      "title": "One row per lead, with a complete eligibility decision",
+      "description": "The grain is the PARTY, not the crash: fixtures/synthetic_parties.csv has no key into gold, so each fixture row becomes exactly one lead whether or not a crash could be matched to it. `geo`, `contact` and `consent` are STRUCT columns here and JSON-encoded strings in output/sample_leads.csv; both round-trip to the same object, and the CSV validator re-parses each cell before jsonschema.validate. No column carries a name, a street, a city, an E.164 number or a coordinate -- the boundary is drawn in src/compliance/vault.py and 18 U.S.C. 2725(3) is why the finest DIRECT location here is zip5.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "lead_id", "source_system", "source_record_id", "ingested_at",
+        "incident_date", "jurisdiction",
+        "eligibility_status", "reason_codes", "legal_basis",
+        "decision_lineage_id", "evaluated_at", "ruleset_version",
+        "party_token", "identity_provenance",
+        "_compliance_build_sha", "ruleset_sha256", "blackout_sha256"
+      ],
+      "properties": {
+        "lead_id":            { "type": "string", "pattern": "^LD_[0-9a-f]{16}$" },
+        "source_system":      { "type": "string",
+                                "enum": ["MONTGOMERY_MD", "TXDOT_CRIS", "NHTSA_FARS", "OTHER"] },
+        "source_record_id":   { "type": "string" },
+        "ingested_at":        { "type": "timestamp" },
+        "incident_date":      { "type": "date" },
+        "report_filing_date": { "type": ["date", "null"] },
+        "jurisdiction":       { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "geo":                { "type": "object" },
+        "severity_ordinal":   { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
+        "contact":            { "type": "object" },
+        "consent":            { "type": ["object", "null"] },
+        "eligibility_status": { "type": "string",
+                                "enum": ["ELIGIBLE", "INELIGIBLE", "BLOCKED_UNTIL"] },
+        "blocked_until_date": { "type": ["date", "null"] },
+        "reason_codes":       { "type": "array" },
+        "legal_basis":        { "type": "array" },
+        "decision_lineage_id":{ "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "evaluated_at":       { "type": "timestamp" },
+        "ruleset_version":    { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "priority_score":     { "type": ["number", "null"] },
+        "score_components":   { "type": ["string", "null"] },
+
+        "party_token":        { "type": "string", "pattern": "^pt_[0-9a-f]{32}$" },
+        "party_id_label":     { "type": ["string", "null"] },
+        "crash_sk":           { "type": ["integer", "null"] },
+        "match_method":       { "type": "string",
+                                "enum": ["NO_MATCH", "JURISDICTION_DATE_DISTANCE"] },
+        "identity_provenance":{ "type": "string",
+                                "enum": ["MOTOR_VEHICLE_RECORD", "PUBLIC_CRASH_REPORT",
+                                         "CONSUMER_DIRECT", "SYNTHETIC_FIXTURE", "UNKNOWN"] },
+        "tz_source":          { "type": ["string", "null"],
+                                "enum": ["COORDINATE", "COUNTY_FALLBACK",
+                                         "JURISDICTION_DEFAULT", "UNRESOLVED", null] },
+        "snap_status":        { "type": ["string", "null"],
+                                "enum": ["SNAPPED", "REJECTED_DISTANCE", "NOT_ATTEMPTED",
+                                         "NO_GEOMETRY", "NOT_IN_SCOPE", "UNAVAILABLE", null] },
+        "envelope_status":    { "type": ["string", "null"],
+                                "enum": ["OK", "OUT_OF_ENVELOPE", "SENTINEL", "MISSING", null] },
+        "_compliance_build_sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "_geo_build_sha":     { "type": ["string", "null"] },
+        "ruleset_sha256":     { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "blackout_sha256":    { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "x-table-constraints": {
+        "unique_keys": [["lead_id"], ["party_token"]],
+        "foreign_keys": [],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "reason_codes_non_empty",
+            "predicate": "len(reason_codes) >= 1",
+            "description": "contracts/lead_output.schema.json says minItems: 1. A record with no codes is a record with no reasoning, and the default disposition is emitted as NO_AFFIRMATIVE_BASIS rather than as an absence."
+          },
+          {
+            "name": "legal_basis_parallel_to_reason_codes",
+            "predicate": "len(legal_basis) = len(reason_codes)",
+            "description": "The two arrays are emitted parallel -- one citation per code, same order -- because the contract has them as separate arrays and a consumer has no other way to pair them. A shorter legal_basis is an uncited exclusion."
+          },
+          {
+            "name": "blocked_until_has_a_future_date",
+            "predicate": "eligibility_status <> 'BLOCKED_UNTIL' OR (blocked_until_date IS NOT NULL AND blocked_until_date > CAST(evaluated_at AS DATE))",
+            "description": "BLOCKED_UNTIL must carry a date, and that date must be after the evaluation date -- a window that has already opened is not a block. Written against evaluated_at rather than a literal as_of so the rule holds for any run date; evaluated_at IS as_of at 00:00 UTC by construction (see src/compliance/engine.py)."
+          },
+          {
+            "name": "eligible_requires_affirmative_code",
+            "predicate": "eligibility_status <> 'ELIGIBLE' OR list_contains(reason_codes, 'ELIGIBLE_CONSENTED') OR list_contains(reason_codes, 'ELIGIBLE_EBR')",
+            "description": "ASSIGNMENT.md Part 5: eligibility must be affirmatively proven, per record, with a citation. An ELIGIBLE row whose codes contain no affirmative basis has not proven anything, and this is the rule that refuses to ship it."
+          },
+          {
+            "name": "ineligible_publishes_no_date",
+            "predicate": "eligibility_status <> 'INELIGIBLE' OR blocked_until_date IS NULL",
+            "description": "A date on an INELIGIBLE record would tell the business it becomes contactable then, which is false: the failure is either non-curable or curable by a refresh, and neither is cleared by the passage of time."
+          },
+          {
+            "name": "matched_lead_has_a_crash",
+            "predicate": "(match_method = 'NO_MATCH') = (crash_sk IS NULL)",
+            "description": "match_method and crash_sk say the same thing and must never disagree. A NO_MATCH row with a crash_sk would mean a crash was attached without a recorded method."
+          },
+          {
+            "name": "unmatched_lead_is_source_other",
+            "predicate": "match_method <> 'NO_MATCH' OR source_system = 'OTHER'",
+            "description": "No matched crash means no source system to claim. Attributing an unmatched lead to MONTGOMERY_MD would be fabricating a provenance, which is the one thing Part 5 says a record may never do."
+          }
+        ]
+      }
+    },
+
+    "compliance.decision_lineage": {
+      "title": "Immutable, append-only decision audit records",
+      "description": "One row per distinct decision. `decision_lineage_id` is sha256(tokenised input, ruleset sha, blackout sha, as_of), so a re-run appends nothing and any change appends a NEW row rather than updating one. The row CONTAINS the state that produced the decision -- ordered findings with params as evaluated, citations as they read on the day, the tokenised input snapshot -- because eighteen months from now rules.yaml will say something else.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "decision_lineage_id", "lead_id", "as_of", "evaluated_at",
+        "eligibility_status", "reason_codes", "legal_basis", "findings_json",
+        "input_snapshot_json", "ruleset_version", "ruleset_sha256",
+        "blackout_sha256", "_compliance_build_sha"
+      ],
+      "properties": {
+        "decision_lineage_id":  { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "lead_id":              { "type": "string" },
+        "party_token":          { "type": ["string", "null"] },
+        "as_of":                { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "evaluated_at":         { "type": "string" },
+        "eligibility_status":   { "type": "string",
+                                  "enum": ["ELIGIBLE", "INELIGIBLE", "BLOCKED_UNTIL"] },
+        "blocked_until_date":   { "type": ["string", "null"] },
+        "reason_codes":         { "type": "string" },
+        "legal_basis":          { "type": "string" },
+        "findings_json":        { "type": "string" },
+        "input_snapshot_json":  { "type": "string" },
+        "ruleset_version":      { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "ruleset_sha256":       { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "blackout_sha256":      { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "_compliance_build_sha":{ "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "x-table-constraints": {
+        "unique_keys": [["decision_lineage_id"]],
+        "foreign_keys": [],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "lineage_reason_codes_non_empty",
+            "predicate": "length(reason_codes) >= 1",
+            "description": "Codes are pipe-joined here rather than a LIST because a lineage row is read as text by a human reconstructing a decision, and a pipe-joined string survives a CSV export intact."
+          },
+          {
+            "name": "lineage_snapshot_is_json",
+            "predicate": "json_valid(input_snapshot_json) AND json_valid(findings_json) AND json_valid(legal_basis)",
+            "description": "An audit record that cannot be parsed is not an audit record. Checked here rather than trusted because these three columns are the only place the state that produced a decision survives."
+          },
+          {
+            "name": "lineage_blocked_until_matches_status",
+            "predicate": "(eligibility_status = 'BLOCKED_UNTIL') = (blocked_until_date IS NOT NULL)",
+            "description": "The lineage row must agree with the lead row it explains: a date exactly when the status is BLOCKED_UNTIL, never otherwise."
+          }
+        ]
+      }
+    },
+
+    "compliance.crash_only_decisions": {
+      "title": "Production truth: every gold crash evaluated with NO identity layer",
+      "description": "The table that answers ASSIGNMENT.md Part 7's direct question. A gold crash has a jurisdiction, dates and geography and no contact block at all, so it enters the same engine as PUBLIC_CRASH_REPORT provenance with no phone, no consent and no line type. What comes out is the honest count of deliverable leads from the real sources -- and the honest count is expected to be zero in every jurisdiction, which is a passing answer and is the one the memo states.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "crash_sk", "jurisdiction", "source_system", "crash_date",
+        "eligibility_status", "reason_codes", "decision_lineage_id",
+        "evaluated_at", "ruleset_version", "_compliance_build_sha"
+      ],
+      "properties": {
+        "crash_sk":             { "type": "integer" },
+        "jurisdiction":         { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "source_system":        { "type": "string",
+                                  "enum": ["MONTGOMERY_MD", "TXDOT_CRIS", "NHTSA_FARS", "OTHER"] },
+        "crash_date":           { "type": "date" },
+        "eligibility_status":   { "type": "string",
+                                  "enum": ["ELIGIBLE", "INELIGIBLE", "BLOCKED_UNTIL"] },
+        "blocked_until_date":   { "type": ["date", "null"] },
+        "reason_codes":         { "type": "string" },
+        "decision_lineage_id":  { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "evaluated_at":         { "type": "timestamp" },
+        "ruleset_version":      { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "_compliance_build_sha":{ "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "x-table-constraints": {
+        "unique_keys": [["crash_sk"]],
+        "foreign_keys": [],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "crash_only_is_never_eligible_without_proof",
+            "predicate": "eligibility_status <> 'ELIGIBLE' OR reason_codes LIKE '%ELIGIBLE_%'",
+            "description": "Same affirmative-basis rule as the lead table. If this ever fires it means the engine found a permissible use in a record that has no contact details at all, which would be a bug worth stopping the build for."
+          }
+        ]
+      }
+    },
+
+    "compliance.exclusion_by_code": {
+      "title": "The exclusion table the memo asks for",
+      "description": "Counts by run x jurisdiction x eligibility_status x reason_code, over BOTH the fixture leads and the crash-only run. ASSIGNMENT.md Part 7: 'We want the exclusion table. It is more informative than the inclusion table.' `disposition` carries what the code MEANS under the ruleset that produced the count, so a reader does not have to hold rules.yaml open beside it.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": ["run", "jurisdiction", "eligibility_status", "reason_code",
+                   "disposition", "records"],
+      "properties": {
+        "run":                { "type": "string", "enum": ["fixture_leads", "crash_only"] },
+        "jurisdiction":       { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "eligibility_status": { "type": "string",
+                                "enum": ["ELIGIBLE", "INELIGIBLE", "BLOCKED_UNTIL"] },
+        "reason_code":        { "type": "string" },
+        "disposition":        { "type": "string",
+                                "enum": ["BAR", "HOLD_UNTIL_DATE", "HOLD_UNTIL_REFRESH",
+                                         "NOTE", "AFFIRMATIVE"] },
+        "records":            { "type": "integer", "minimum": 1 }
+      },
+      "x-table-constraints": {
+        "unique_keys": [["run", "jurisdiction", "eligibility_status", "reason_code"]],
+        "foreign_keys": [],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "eligible_carries_no_blocking_code",
+            "predicate": "eligibility_status <> 'ELIGIBLE' OR disposition IN ('AFFIRMATIVE', 'NOTE')",
+            "description": "An ELIGIBLE record may carry an affirmative basis and a NOTE (a VoIP number routed to the wireless tier is still contactable once its consent requirement is met), but never a BAR, a HOLD_UNTIL_DATE or a HOLD_UNTIL_REFRESH. If one appears here the status precedence and the disposition map have disagreed, which is a build-stopping bug. NOTE the converse is deliberately NOT asserted: an AFFIRMATIVE code on a BLOCKED_UNTIL or INELIGIBLE row is correct and informative -- it says a valid consent exists AND a time window binds, which is exactly what a business reader needs to see to know the record becomes contactable rather than never."
+          }
+        ]
+      }
+    }
+  }
+}
