@@ -1,0 +1,251 @@
+{
+  "contract": "contracts/lead_output.schema.json",
+  "validator": "jsonschema Draft202012Validator, format_checker=FormatChecker()",
+  "as_of": "2026-09-01",
+  "ruleset_version": "1.0.0",
+  "rows": 40,
+  "valid": 40,
+  "invalid": 0,
+  "results": [
+    {
+      "lead_id": "LD_99565c0e3b883827",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_c81fe62f13bc7dcc",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_8ab8cacf0d2ee167",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_b60941219da33b79",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_915f8007a6c85a59",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_573155082ca3ff2b",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_38e3ceb3dbc80375",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_55f5e632ed175810",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_346a74f3938ab0fd",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_4de94fc1c91ebabb",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_e93b943894719bf9",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_a0cabae298b6ee64",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_9aac431c2016ad21",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_e0a4d69fad770249",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_12ac6a9859c6b6a0",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_02fc2b0845bab51e",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_e471d9eeb66ec800",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_181e0d7b4867859a",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_0a7017f6a8641590",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_21279e9881dde5b4",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_a04cc932189209d4",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_56a75ae63f7b28db",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_924cb0fe631758a0",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_6be717132aa0dc8f",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_1300a6215448b0e5",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_0fc67f26e627a9f8",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_c2786538b4c732bf",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_5b57109551aa657f",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_c83ad5abebb1e5f5",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_4f05d6f0656811be",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_f4439d45a10d4a05",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_656db247441f4745",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_b3146b00db8b00dc",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_41cafb7bfd23b1be",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_c7549fea0a2d4c39",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_bfc960b38434755a",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_1e2c6512f9131183",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_60f557d9c6b27ab9",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_ed2453d253132826",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    },
+    {
+      "lead_id": "LD_a251a1656c0c6df4",
+      "valid": true,
+      "error": null,
+      "error_count": 0
+    }
+  ]
+}
