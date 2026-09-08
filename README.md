@@ -17,6 +17,8 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp config/settings.example.toml config/settings.toml   # add your Census API key
 python -m src.ingest.montgomery --since 2026-01-01
+python -m src.compliance.build
+python -m src.scoring.build
 ```
 
 ## Layout
@@ -26,7 +28,7 @@ src/ingest/      one module per source; bronze layer
 src/transform/   bronze -> silver; conformed model
 src/geo/         projection, snapping, indexing, timezone
 src/compliance/  the eligibility engine — read compliance/rules.yaml first
-src/scoring/     lead prioritisation
+src/scoring/     explainable additive lead scoring and spatially blocked backtest
 contracts/       JSON Schema for each layer boundary
 orchestration/   your DAG
 tests/           see tests/test_known_defects.py for the four you must catch
