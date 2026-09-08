@@ -11,32 +11,99 @@
       "additionalProperties": false,
       "x-column-order-is-contract": true,
       "required": [
-        "h3_r8", "study_area", "period_start", "period_end",
-        "n_crashes", "n_injury", "n_fatal", "population", "land_area_km2",
-        "rate_is_defined", "n_neighbors", "is_edge_cell", "is_land",
-        "_analysis_build_sha", "_geo_build_sha"
+        "h3_r8",
+        "study_area",
+        "period_start",
+        "period_end",
+        "n_crashes",
+        "n_injury",
+        "n_fatal",
+        "population",
+        "land_area_km2",
+        "rate_is_defined",
+        "n_neighbors",
+        "is_edge_cell",
+        "is_land",
+        "_analysis_build_sha",
+        "_geo_build_sha"
       ],
       "properties": {
-        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
-        "study_area": {"type": "string", "pattern": "^[0-9]{5}$"},
-        "period_start": {"type": "date"},
-        "period_end": {"type": "date"},
-        "n_crashes": {"type": "integer", "minimum": 0},
-        "n_injury": {"type": "integer", "minimum": 0},
-        "n_fatal": {"type": "integer", "minimum": 0},
-        "population": {"type": "number", "minimum": 0},
-        "land_area_km2": {"type": "number", "minimum": 0},
-        "rate_per_1k_pop": {"type": ["number", "null"], "minimum": 0},
-        "rate_per_km2": {"type": ["number", "null"], "minimum": 0},
-        "rate_is_defined": {"type": "boolean"},
-        "n_neighbors": {"type": "integer", "minimum": 0, "maximum": 6},
-        "is_edge_cell": {"type": "boolean"},
-        "is_land": {"type": "boolean"},
-        "_analysis_build_sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "_geo_build_sha": {"type": "string"}
+        "h3_r8": {
+          "type": "string",
+          "pattern": "^8[0-9a-f]{14}$"
+        },
+        "study_area": {
+          "type": "string",
+          "pattern": "^[0-9]{5}$"
+        },
+        "period_start": {
+          "type": "date"
+        },
+        "period_end": {
+          "type": "date"
+        },
+        "n_crashes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_injury": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_fatal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "population": {
+          "type": "number",
+          "minimum": 0
+        },
+        "land_area_km2": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rate_per_1k_pop": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rate_per_km2": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rate_is_defined": {
+          "type": "boolean"
+        },
+        "n_neighbors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "is_edge_cell": {
+          "type": "boolean"
+        },
+        "is_land": {
+          "type": "boolean"
+        },
+        "_analysis_build_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "_geo_build_sha": {
+          "type": "string"
+        }
       },
       "x-table-constraints": {
-        "unique_keys": [["h3_r8"]],
+        "unique_keys": [
+          [
+            "h3_r8"
+          ]
+        ],
         "foreign_keys": [],
         "row_count_min": 1,
         "row_rules": [
@@ -74,39 +141,109 @@
             "name": "period_ordered",
             "predicate": "period_start <= period_end",
             "description": "the study period is a period"
+          },
+          {
+            "name": "lineage_is_populated",
+            "predicate": "length(_analysis_build_sha) = 64 AND length(_geo_build_sha) > 0",
+            "description": "a lineage column that is allowed to be an empty string is not lineage. This caught _geo_build_sha being read from the wrong place: Phase 4 stamps it on the crash_geo rows and does not put it in its own manifest, so an empty value here means the build looked somewhere that does not have it."
           }
         ]
       }
     },
-
     "analysis.lisa_h3_r8": {
       "title": "Local Moran's I (LISA) per cell and variable",
-      "description": "esda.Moran_Local with 999 conditional permutations and a fixed seed, on row-standardised k=1 hex contiguity weights. `p_fdr` is the Benjamini-Hochberg threshold (esda.fdr) for the whole variable's p-value vector -- a single number repeated on every row of that variable, not a per-row adjusted p -- and `significant` is `p_sim <= p_fdr`. `quadrant_uncorrected` is the same classification at the uncorrected alpha, kept as a column so the correction's effect is a measurement rather than a sentence. HH/LL are clusters; LH/HL are spatial outliers and are usually a single intersection.",
+      "description": "esda.Moran_Local with a seeded, two-sided conditional permutation test (the count is config/geo.toml [analysis] permutations, not a contract), on row-standardised k=1 hex contiguity weights. `p_fdr` is the Benjamini-Hochberg threshold (esda.fdr) for the whole variable's p-value vector -- a single number repeated on every row of that variable, not a per-row adjusted p -- and `significant` is `p_sim <= p_fdr`. `quadrant_uncorrected` is the same classification at the uncorrected alpha, kept as a column so the correction's effect is a measurement rather than a sentence. HH/LL are clusters; LH/HL are spatial outliers and are usually a single intersection.",
       "type": "object",
       "additionalProperties": false,
       "x-column-order-is-contract": true,
       "required": [
-        "h3_r8", "variable", "local_i", "z_score", "p_sim", "p_fdr",
-        "quadrant", "quadrant_uncorrected", "significant", "significant_uncorrected"
+        "h3_r8",
+        "variable",
+        "local_i",
+        "z_score",
+        "p_sim",
+        "p_fdr",
+        "quadrant",
+        "quadrant_uncorrected",
+        "significant",
+        "significant_uncorrected"
       ],
       "properties": {
-        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
-        "variable": {"type": "string", "enum": ["raw_count", "rate_per_1k_pop"]},
-        "local_i": {"type": "number"},
-        "z_score": {"type": ["number", "null"]},
-        "p_sim": {"type": "number", "minimum": 0, "maximum": 1},
-        "p_fdr": {"type": "number", "minimum": 0, "maximum": 1},
-        "quadrant": {"type": "string", "enum": ["HH", "LL", "HL", "LH", "NS"]},
-        "quadrant_uncorrected": {"type": "string", "enum": ["HH", "LL", "HL", "LH", "NS"]},
-        "significant": {"type": "boolean"},
-        "significant_uncorrected": {"type": "boolean"}
+        "h3_r8": {
+          "type": "string",
+          "pattern": "^8[0-9a-f]{14}$"
+        },
+        "variable": {
+          "type": "string",
+          "enum": [
+            "raw_count",
+            "rate_per_1k_pop"
+          ]
+        },
+        "local_i": {
+          "type": "number"
+        },
+        "z_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p_sim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "p_fdr": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "quadrant": {
+          "type": "string",
+          "enum": [
+            "HH",
+            "LL",
+            "HL",
+            "LH",
+            "NS"
+          ]
+        },
+        "quadrant_uncorrected": {
+          "type": "string",
+          "enum": [
+            "HH",
+            "LL",
+            "HL",
+            "LH",
+            "NS"
+          ]
+        },
+        "significant": {
+          "type": "boolean"
+        },
+        "significant_uncorrected": {
+          "type": "boolean"
+        }
       },
       "x-table-constraints": {
-        "unique_keys": [["h3_r8", "variable"]],
+        "unique_keys": [
+          [
+            "h3_r8",
+            "variable"
+          ]
+        ],
         "foreign_keys": [
           {
-            "columns": ["h3_r8"],
-            "references": {"table": "analysis.cell_stats_h3_r8", "columns": ["h3_r8"]}
+            "columns": [
+              "h3_r8"
+            ],
+            "references": {
+              "table": "analysis.cell_stats_h3_r8",
+              "columns": [
+                "h3_r8"
+              ]
+            }
           }
         ],
         "row_count_min": 1,
@@ -134,42 +271,99 @@
         ]
       }
     },
-
     "analysis.gi_star_h3_r8": {
       "title": "Getis-Ord Gi* per cell and variable",
-      "description": "esda.G_Local(star=True) with 999 permutations and a fixed seed, on BINARY k=1 hex contiguity weights -- binary because Gi* compares a neighbourhood SUM to the global sum, and row-standardising would turn it into a comparison of means and stop it being an intensity test. `star=True` puts the cell in its own neighbourhood, which is what lets a single intense cell register. `hotspot_class` is the FDR-corrected classification, `hotspot_class_uncorrected` the same classification at raw alpha; `p_bonferroni` is reported for comparison and is deliberately not what the class column uses.",
+      "description": "esda.G_Local(star=True) with a seeded, two-sided conditional permutation test, on BINARY k=1 hex contiguity weights -- binary because Gi* compares a neighbourhood SUM to the global sum, and row-standardising would turn it into a comparison of means and stop it being an intensity test. `star=True` puts the cell in its own neighbourhood, which is what lets a single intense cell register. `hotspot_class` is the FDR-corrected classification, `hotspot_class_uncorrected` the same classification at raw alpha; `p_bonferroni` is reported for comparison and is deliberately not what the class column uses.",
       "type": "object",
       "additionalProperties": false,
       "x-column-order-is-contract": true,
       "required": [
-        "h3_r8", "variable", "gi_z", "p_sim", "p_fdr", "p_bonferroni",
-        "hotspot_class", "hotspot_class_uncorrected", "significant",
+        "h3_r8",
+        "variable",
+        "gi_z",
+        "p_sim",
+        "p_fdr",
+        "p_bonferroni",
+        "hotspot_class",
+        "hotspot_class_uncorrected",
+        "significant",
         "significant_uncorrected"
       ],
       "properties": {
-        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
-        "variable": {"type": "string", "enum": ["raw_count", "rate_per_1k_pop"]},
-        "gi_z": {"type": "number"},
-        "p_sim": {"type": "number", "minimum": 0, "maximum": 1},
-        "p_fdr": {"type": "number", "minimum": 0, "maximum": 1},
-        "p_bonferroni": {"type": "number", "minimum": 0, "maximum": 1},
+        "h3_r8": {
+          "type": "string",
+          "pattern": "^8[0-9a-f]{14}$"
+        },
+        "variable": {
+          "type": "string",
+          "enum": [
+            "raw_count",
+            "rate_per_1k_pop"
+          ]
+        },
+        "gi_z": {
+          "type": "number"
+        },
+        "p_sim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "p_fdr": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "p_bonferroni": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "hotspot_class": {
           "type": "string",
-          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS"]
+          "enum": [
+            "HOT_99",
+            "HOT_95",
+            "COLD_95",
+            "COLD_99",
+            "NS"
+          ]
         },
         "hotspot_class_uncorrected": {
           "type": "string",
-          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS"]
+          "enum": [
+            "HOT_99",
+            "HOT_95",
+            "COLD_95",
+            "COLD_99",
+            "NS"
+          ]
         },
-        "significant": {"type": "boolean"},
-        "significant_uncorrected": {"type": "boolean"}
+        "significant": {
+          "type": "boolean"
+        },
+        "significant_uncorrected": {
+          "type": "boolean"
+        }
       },
       "x-table-constraints": {
-        "unique_keys": [["h3_r8", "variable"]],
+        "unique_keys": [
+          [
+            "h3_r8",
+            "variable"
+          ]
+        ],
         "foreign_keys": [
           {
-            "columns": ["h3_r8"],
-            "references": {"table": "analysis.cell_stats_h3_r8", "columns": ["h3_r8"]}
+            "columns": [
+              "h3_r8"
+            ],
+            "references": {
+              "table": "analysis.cell_stats_h3_r8",
+              "columns": [
+                "h3_r8"
+              ]
+            }
           }
         ],
         "row_count_min": 1,
@@ -202,7 +396,6 @@
         ]
       }
     },
-
     "analysis.hotspot_contrast": {
       "title": "Cells whose Gi* class changes under population normalisation",
       "description": "The assignment's explicit ask -- 'show that population normalization changes the answer' -- as a table rather than a paragraph. One row per cell whose FDR-corrected Gi* class differs between raw counts and the per-capita rate. `contrast_kind` HOT_RAW_ONLY is volume without risk (a busy cell that is busy because that is where the people are); HOT_RATE_ONLY is risk without volume, which is what a raw-count map hides; RATE_UNDEFINED is a cell the normalised analysis could not score at all because its population is below the floor, reported rather than dropped because that is itself the finding. `place_name` is the modal snapped OSM road name in the cell: a label so the prose can name the place, not a claim that the road caused anything.",
@@ -210,40 +403,109 @@
       "additionalProperties": false,
       "x-column-order-is-contract": true,
       "required": [
-        "h3_r8", "class_raw_count", "class_rate_per_1k_pop", "contrast_kind",
+        "h3_r8",
+        "class_raw_count",
+        "class_rate_per_1k_pop",
+        "contrast_kind",
         "n_crashes"
       ],
       "properties": {
-        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
+        "h3_r8": {
+          "type": "string",
+          "pattern": "^8[0-9a-f]{14}$"
+        },
         "class_raw_count": {
           "type": "string",
-          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS"]
+          "enum": [
+            "HOT_99",
+            "HOT_95",
+            "COLD_95",
+            "COLD_99",
+            "NS"
+          ]
         },
         "class_rate_per_1k_pop": {
           "type": "string",
-          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS", "RATE_UNDEFINED"]
+          "enum": [
+            "HOT_99",
+            "HOT_95",
+            "COLD_95",
+            "COLD_99",
+            "NS",
+            "RATE_UNDEFINED"
+          ]
         },
         "contrast_kind": {
           "type": "string",
           "enum": [
-            "HOT_RAW_ONLY", "HOT_RATE_ONLY", "COLD_RAW_ONLY", "COLD_RATE_ONLY",
-            "LEVEL_CHANGE", "RATE_UNDEFINED"
+            "HOT_RAW_ONLY",
+            "HOT_RATE_ONLY",
+            "COLD_RAW_ONLY",
+            "COLD_RATE_ONLY",
+            "LEVEL_CHANGE",
+            "RATE_UNDEFINED"
           ]
         },
-        "n_crashes": {"type": "integer", "minimum": 0},
-        "population": {"type": ["number", "null"], "minimum": 0},
-        "rate_per_1k_pop": {"type": ["number", "null"], "minimum": 0},
-        "gi_z_raw_count": {"type": ["number", "null"]},
-        "gi_z_rate_per_1k_pop": {"type": ["number", "null"]},
-        "place_name": {"type": ["string", "null"]},
-        "place_highway": {"type": ["string", "null"]}
+        "n_crashes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "population": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rate_per_1k_pop": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "gi_z_raw_count": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "gi_z_rate_per_1k_pop": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "place_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "place_highway": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
       "x-table-constraints": {
-        "unique_keys": [["h3_r8"]],
+        "unique_keys": [
+          [
+            "h3_r8"
+          ]
+        ],
         "foreign_keys": [
           {
-            "columns": ["h3_r8"],
-            "references": {"table": "analysis.cell_stats_h3_r8", "columns": ["h3_r8"]}
+            "columns": [
+              "h3_r8"
+            ],
+            "references": {
+              "table": "analysis.cell_stats_h3_r8",
+              "columns": [
+                "h3_r8"
+              ]
+            }
           }
         ],
         "row_count_min": 0,
@@ -266,7 +528,6 @@
         ]
       }
     },
-
     "analysis.kde_surface": {
       "title": "Kernel density surfaces at every reported bandwidth",
       "description": "A regular grid in EPSG:26985 (NAD83 / Maryland, metres) -- named on every row rather than assumed, because a grid of bare (x, y) doubles with no frame is not a spatial output. One block of rows per bandwidth so the three surfaces can be compared on an identical grid and colour scale. `density` is a probability density per square metre and integrates to ~1 over the grid (the build asserts it, which checks the grid extent and the area units at once); `intensity_per_km2` is that times N times 1e6, i.e. expected crashes per square kilometre over the study period, which is the number an operations reader can act on. `bandwidth_method` records how each bandwidth was arrived at: cross-validated on spatially blocked folds, a Gaussian rule of thumb, or the off-the-shelf practitioner control.",
@@ -274,23 +535,56 @@
       "additionalProperties": false,
       "x-column-order-is-contract": true,
       "required": [
-        "bandwidth_m", "bandwidth_method", "x_m", "y_m", "density",
-        "intensity_per_km2", "crs_epsg"
+        "bandwidth_m",
+        "bandwidth_method",
+        "x_m",
+        "y_m",
+        "density",
+        "intensity_per_km2",
+        "crs_epsg"
       ],
       "properties": {
-        "bandwidth_m": {"type": "number", "minimum": 1},
+        "bandwidth_m": {
+          "type": "number",
+          "minimum": 1
+        },
         "bandwidth_method": {
           "type": "string",
-          "enum": ["cv_blocked", "scott", "silverman", "practitioner"]
+          "enum": [
+            "cv_blocked",
+            "scott",
+            "silverman",
+            "practitioner"
+          ]
         },
-        "x_m": {"type": "number"},
-        "y_m": {"type": "number"},
-        "density": {"type": "number", "minimum": 0},
-        "intensity_per_km2": {"type": "number", "minimum": 0},
-        "crs_epsg": {"type": "integer", "minimum": 1024, "maximum": 32767}
+        "x_m": {
+          "type": "number"
+        },
+        "y_m": {
+          "type": "number"
+        },
+        "density": {
+          "type": "number",
+          "minimum": 0
+        },
+        "intensity_per_km2": {
+          "type": "number",
+          "minimum": 0
+        },
+        "crs_epsg": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 32767
+        }
       },
       "x-table-constraints": {
-        "unique_keys": [["bandwidth_method", "x_m", "y_m"]],
+        "unique_keys": [
+          [
+            "bandwidth_method",
+            "x_m",
+            "y_m"
+          ]
+        ],
         "foreign_keys": [],
         "row_count_min": 1,
         "row_rules": [
@@ -307,23 +601,47 @@
         ]
       }
     },
-
     "analysis.crash_year_counts": {
       "title": "Crashes per calendar year in the study corpus",
       "description": "The data behind the first figure, and the evidence for the period choice: a per-year table is what shows the 2020 pandemic drop and the partial final year that would otherwise be read as a spatial finding. Figures are not required to be byte-identical between runs (matplotlib embeds versions); the table behind each one is.",
       "type": "object",
       "additionalProperties": false,
       "x-column-order-is-contract": true,
-      "required": ["year", "n_crashes", "n_injury", "n_fatal", "in_study_period"],
+      "required": [
+        "year",
+        "n_crashes",
+        "n_injury",
+        "n_fatal",
+        "in_study_period"
+      ],
       "properties": {
-        "year": {"type": "integer", "minimum": 1900, "maximum": 2200},
-        "n_crashes": {"type": "integer", "minimum": 0},
-        "n_injury": {"type": "integer", "minimum": 0},
-        "n_fatal": {"type": "integer", "minimum": 0},
-        "in_study_period": {"type": "boolean"}
+        "year": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2200
+        },
+        "n_crashes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_injury": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_fatal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "in_study_period": {
+          "type": "boolean"
+        }
       },
       "x-table-constraints": {
-        "unique_keys": [["year"]],
+        "unique_keys": [
+          [
+            "year"
+          ]
+        ],
         "foreign_keys": [],
         "row_count_min": 1,
         "row_rules": [
@@ -335,7 +653,6 @@
         ]
       }
     },
-
     "analysis.st_clusters": {
       "title": "ST-DBSCAN clusters, tight in space and in time",
       "description": "Clusters found with two independent thresholds -- [analysis.st_dbscan] eps_space_m in EPSG:26985 metres and eps_time_h in hours -- so a cluster is a set of crashes that are near each other AND close in time, which is the recurring-corridor result the assignment asks for rather than the year-long smear a space-only epsilon produces. sklearn's DBSCAN takes one metric, so the neighbourhood is built directly as a sparse 0/1 matrix that is true only where both conditions hold. `span_days` is the discriminator: the same run with the time condition removed is reported beside this one, and its clusters span the whole study period.",
@@ -343,31 +660,120 @@
       "additionalProperties": false,
       "x-column-order-is-contract": true,
       "required": [
-        "cluster_id", "run", "n_crashes", "span_days", "radius_m",
-        "centroid_x_m", "centroid_y_m", "crs_epsg"
+        "cluster_id",
+        "run",
+        "n_crashes",
+        "span_days",
+        "radius_m",
+        "centroid_x_m",
+        "centroid_y_m",
+        "crs_epsg"
       ],
       "properties": {
-        "cluster_id": {"type": "integer", "minimum": 0},
-        "run": {"type": "string", "enum": ["spatiotemporal", "space_only"]},
-        "n_crashes": {"type": "integer", "minimum": 1},
-        "n_injury": {"type": "integer", "minimum": 0},
-        "n_fatal": {"type": "integer", "minimum": 0},
-        "span_days": {"type": "number", "minimum": 0},
-        "first_crash_date": {"type": ["date", "null"]},
-        "last_crash_date": {"type": ["date", "null"]},
-        "radius_m": {"type": "number", "minimum": 0},
-        "centroid_x_m": {"type": "number"},
-        "centroid_y_m": {"type": "number"},
-        "crs_epsg": {"type": "integer", "minimum": 1024, "maximum": 32767},
-        "modal_dow": {"type": ["string", "null"]},
-        "modal_hour": {"type": ["integer", "null"], "minimum": 0, "maximum": 23},
-        "dow_concentration": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "night_fraction": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "place_name": {"type": ["string", "null"]},
-        "place_highway": {"type": ["string", "null"]}
+        "cluster_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "run": {
+          "type": "string",
+          "enum": [
+            "spatiotemporal",
+            "space_only"
+          ]
+        },
+        "n_crashes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_injury": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_fatal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "span_days": {
+          "type": "number",
+          "minimum": 0
+        },
+        "first_crash_date": {
+          "type": [
+            "date",
+            "null"
+          ]
+        },
+        "last_crash_date": {
+          "type": [
+            "date",
+            "null"
+          ]
+        },
+        "radius_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "centroid_x_m": {
+          "type": "number"
+        },
+        "centroid_y_m": {
+          "type": "number"
+        },
+        "crs_epsg": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 32767
+        },
+        "modal_dow": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modal_hour": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 23
+        },
+        "dow_concentration": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "night_fraction": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "place_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "place_highway": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
       "x-table-constraints": {
-        "unique_keys": [["run", "cluster_id"]],
+        "unique_keys": [
+          [
+            "run",
+            "cluster_id"
+          ]
+        ],
         "foreign_keys": [],
         "row_count_min": 0,
         "row_rules": [

@@ -210,15 +210,32 @@ def build_sha(hashes: dict[str, str], area: frames.StudyArea) -> str:
     return h.hexdigest()
 
 
-def geo_build_sha(gold_root: Path) -> str:
-    """The `_geo_build_sha` crash_geo was written with, for lineage."""
-    manifest = gold_root / "_geo_manifest.json"
-    if manifest.exists():
-        stats = json.loads(manifest.read_text()).get("stats", {})
-        for key in ("geo_build_sha", "build_sha"):
-            if key in stats:
-                return str(stats[key])
-    return ""
+def geo_build_sha(con: Any, gold_root: Path) -> str:
+    """The `_geo_build_sha` crash_geo was written with, for lineage.
+
+    Read from the COLUMN, not from `_geo_manifest.json`. Phase 4 computes the
+    sha and stamps it on every crash_geo row but does not put it in its own
+    manifest, so the column is the only authoritative copy -- and it is also
+    the right one: it is the value that actually travelled with the rows this
+    build consumed, rather than the value some manifest says the last geo build
+    produced. `DISTINCT` because a crash_geo written by two different geo
+    builds would be a broken input and should be visible as one.
+    """
+    path = gold_root / "crash_geo.parquet"
+    if not path.exists():
+        return ""
+    p = str(path).replace("'", "''")
+    rows = con.execute(
+        f"SELECT DISTINCT _geo_build_sha FROM read_parquet('{p}') "
+        f"WHERE _geo_build_sha IS NOT NULL ORDER BY 1"
+    ).fetchall()
+    if len(rows) > 1:
+        raise ValueError(
+            f"crash_geo carries {len(rows)} distinct _geo_build_sha values "
+            f"({[r[0][:12] for r in rows]}) -- it was assembled from more than "
+            "one geo build and its lineage is not a single fact"
+        )
+    return str(rows[0][0]) if rows else ""
 
 
 # ---------------------------------------------------------------------------
@@ -290,9 +307,12 @@ def build_analysis(
     use_fdr = bool(cfg["fdr"])
 
     manifest = AnalysisManifest(out_root=out, gold_root=gold)
+    con = frames.connect(threads)
+    store = geo_reference.ReferenceStore(ref_root, offline=True)
+
     hashes = input_hashes(gold)
     analysis_sha = build_sha(hashes, area)
-    geo_sha = geo_build_sha(gold)
+    geo_sha = geo_build_sha(con, gold)
     manifest.inputs = {
         **{f"{k}_sha256": v for k, v in hashes.items()},
         "analysis_build_sha": analysis_sha,
@@ -305,9 +325,6 @@ def build_analysis(
         "alpha": alpha,
         "fdr": use_fdr,
     }
-
-    con = frames.connect(threads)
-    store = geo_reference.ReferenceStore(ref_root, offline=True)
 
     # -- the corpus ------------------------------------------------------
     log.info("study corpus")
