@@ -13,6 +13,16 @@ table also carries an `x-table-constraints` block:
     foreign_keys     [{columns, references, ...}]  -- referential expectations
     row_count_min    an integer                    -- "did the build produce
                                                       anything at all"
+    row_rules        [{name, predicate, ...}]      -- cross-column invariants
+
+`row_rules` (added for Phase 5's analysis tables) is the one thing above that
+JSON Schema genuinely cannot express even in principle: it describes one column
+at a time, so it has no way to say "`significant` is true exactly where `p_sim`
+is at or under `p_fdr`". A statistical output table is mostly made of
+invariants of that shape -- a class column that must agree with the z-score
+that produced it, a rate that must be null wherever its denominator was refused
+-- and those are the errors that survive a type check and land in a published
+map. Each rule is a NULL-safe SQL predicate that must hold for every row.
 
 `orphans_allowed_when` on a foreign key names the boolean column that licenses a
 missing parent. That is not a loophole: Montgomery's 785 driverless crashes are
@@ -247,6 +257,26 @@ def validate_relation(
         out.extend(
             _count_failures(con, relation, table, kind, detail, predicate,
                             key_columns, max_examples)
+        )
+
+    # -- row rules ------------------------------------------------------
+    # Added in Phase 5. JSON Schema describes ONE COLUMN at a time, so it
+    # cannot say "significant is true only where p_sim <= p_fdr" -- a
+    # cross-column invariant that is exactly the kind of thing a statistical
+    # output table gets wrong. `row_rules` is a list of
+    # {name, predicate, description}: a SQL expression that must hold for every
+    # row, checked by the same COUNT-plus-examples machinery as everything
+    # else, so a failure names the table, the rule and up to three keys.
+    #
+    # Predicates must be NULL-SAFE (write `col IS NULL OR ...`): `NOT (NULL)`
+    # is NULL, not TRUE, so a rule that evaluates to NULL on a row passes it.
+    # That is the same convention the range checks above use.
+    for rule in constraints.get("row_rules", []):
+        predicate = rule["predicate"]
+        detail = rule.get("description") or rule["name"]
+        out.extend(
+            _count_failures(con, relation, table, f"row-rule:{rule['name']}",
+                            detail, predicate, key_columns, max_examples)
         )
 
     # -- unique keys ----------------------------------------------------

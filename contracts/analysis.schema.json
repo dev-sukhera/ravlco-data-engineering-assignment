@@ -1,0 +1,393 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/analysis.schema.json",
+  "title": "Phase 5 spatial-analysis contracts",
+  "description": "One entry per table written by `python -m src.analysis.build`, in the same dialect as bronze/silver/gold. Row shape in `properties`; grain, row-count floor and cross-column invariants in `x-table-constraints`. These tables differ from gold's in what can go wrong with them: the types are all numbers and the columns are all derived, so a type check catches almost nothing, and the real defects are relational -- a `significant` flag that disagrees with the p-value that produced it, a class label that disagrees with the sign of its own z-score, a per-capita rate on a cell whose population was refused. That is what `row_rules` is for, and every rule here corresponds to a way one of these tables could be published looking entirely plausible and being wrong.",
+  "tables": {
+    "analysis.cell_stats_h3_r8": {
+      "title": "Per-cell crash statistics over the filled study area",
+      "description": "One row per H3 r8 cell overlapping the study-area county polygon, INCLUDING cells with zero crashes: a hot-spot test run only over cells that had a crash conditions on the outcome and can neither find a cold spot nor see the zero that makes its neighbour hot. `population` is ACS 2023 5-year B01003_001E area-apportioned from block groups in EPSG:5070 (equal-area, because the apportionment is a ratio of areas); it is a DENOMINATOR and never a per-record feature. `rate_is_defined` is false where population is under [analysis] min_population_for_rate, and `rate_per_1k_pop` is null there rather than infinite -- those cells (interchanges, the airport, parkland) stay in the raw-count analysis, which is the entire point of the raw-versus-normalised contrast.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "h3_r8", "study_area", "period_start", "period_end",
+        "n_crashes", "n_injury", "n_fatal", "population", "land_area_km2",
+        "rate_is_defined", "n_neighbors", "is_edge_cell", "is_land",
+        "_analysis_build_sha", "_geo_build_sha"
+      ],
+      "properties": {
+        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
+        "study_area": {"type": "string", "pattern": "^[0-9]{5}$"},
+        "period_start": {"type": "date"},
+        "period_end": {"type": "date"},
+        "n_crashes": {"type": "integer", "minimum": 0},
+        "n_injury": {"type": "integer", "minimum": 0},
+        "n_fatal": {"type": "integer", "minimum": 0},
+        "population": {"type": "number", "minimum": 0},
+        "land_area_km2": {"type": "number", "minimum": 0},
+        "rate_per_1k_pop": {"type": ["number", "null"], "minimum": 0},
+        "rate_per_km2": {"type": ["number", "null"], "minimum": 0},
+        "rate_is_defined": {"type": "boolean"},
+        "n_neighbors": {"type": "integer", "minimum": 0, "maximum": 6},
+        "is_edge_cell": {"type": "boolean"},
+        "is_land": {"type": "boolean"},
+        "_analysis_build_sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "_geo_build_sha": {"type": "string"}
+      },
+      "x-table-constraints": {
+        "unique_keys": [["h3_r8"]],
+        "foreign_keys": [],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "injury_within_crashes",
+            "predicate": "n_injury <= n_crashes AND n_fatal <= n_injury",
+            "description": "severity counts nest: fatal <= injury <= crashes (KABCO K is an injury)"
+          },
+          {
+            "name": "rate_defined_iff_population",
+            "predicate": "rate_is_defined = (population >= 50)",
+            "description": "rate_is_defined must equal population >= [analysis] min_population_for_rate. The literal 50 is duplicated from config/geo.toml on purpose -- a contract is a fixed assertion and cannot read a config file -- and tests/test_analysis.py asserts the two agree, so lowering the floor in config without restating it here fails a test rather than quietly making this rule vacuous."
+          },
+          {
+            "name": "rate_null_when_undefined",
+            "predicate": "rate_is_defined OR rate_per_1k_pop IS NULL",
+            "description": "a cell with no usable denominator carries NULL, never inf and never a rate over three people"
+          },
+          {
+            "name": "rate_present_when_defined",
+            "predicate": "NOT rate_is_defined OR rate_per_1k_pop IS NOT NULL",
+            "description": "a cell with a usable denominator must actually carry its rate"
+          },
+          {
+            "name": "rate_finite",
+            "predicate": "rate_per_1k_pop IS NULL OR isfinite(rate_per_1k_pop)",
+            "description": "no inf/NaN survives into a published rate"
+          },
+          {
+            "name": "rate_per_km2_iff_land",
+            "predicate": "is_land = (rate_per_km2 IS NOT NULL)",
+            "description": "a density over land exists exactly where there is land"
+          },
+          {
+            "name": "period_ordered",
+            "predicate": "period_start <= period_end",
+            "description": "the study period is a period"
+          }
+        ]
+      }
+    },
+
+    "analysis.lisa_h3_r8": {
+      "title": "Local Moran's I (LISA) per cell and variable",
+      "description": "esda.Moran_Local with 999 conditional permutations and a fixed seed, on row-standardised k=1 hex contiguity weights. `p_fdr` is the Benjamini-Hochberg threshold (esda.fdr) for the whole variable's p-value vector -- a single number repeated on every row of that variable, not a per-row adjusted p -- and `significant` is `p_sim <= p_fdr`. `quadrant_uncorrected` is the same classification at the uncorrected alpha, kept as a column so the correction's effect is a measurement rather than a sentence. HH/LL are clusters; LH/HL are spatial outliers and are usually a single intersection.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "h3_r8", "variable", "local_i", "z_score", "p_sim", "p_fdr",
+        "quadrant", "quadrant_uncorrected", "significant", "significant_uncorrected"
+      ],
+      "properties": {
+        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
+        "variable": {"type": "string", "enum": ["raw_count", "rate_per_1k_pop"]},
+        "local_i": {"type": "number"},
+        "z_score": {"type": ["number", "null"]},
+        "p_sim": {"type": "number", "minimum": 0, "maximum": 1},
+        "p_fdr": {"type": "number", "minimum": 0, "maximum": 1},
+        "quadrant": {"type": "string", "enum": ["HH", "LL", "HL", "LH", "NS"]},
+        "quadrant_uncorrected": {"type": "string", "enum": ["HH", "LL", "HL", "LH", "NS"]},
+        "significant": {"type": "boolean"},
+        "significant_uncorrected": {"type": "boolean"}
+      },
+      "x-table-constraints": {
+        "unique_keys": [["h3_r8", "variable"]],
+        "foreign_keys": [
+          {
+            "columns": ["h3_r8"],
+            "references": {"table": "analysis.cell_stats_h3_r8", "columns": ["h3_r8"]}
+          }
+        ],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "significant_matches_threshold",
+            "predicate": "significant = (p_sim <= p_fdr)",
+            "description": "the significance flag is the FDR test, not a second opinion about it"
+          },
+          {
+            "name": "quadrant_ns_iff_not_significant",
+            "predicate": "(quadrant = 'NS') = (NOT significant)",
+            "description": "a quadrant is only classified where the corrected test passes"
+          },
+          {
+            "name": "fdr_no_looser_than_alpha",
+            "predicate": "p_fdr <= 0.05",
+            "description": "a correction that raised the threshold above alpha would be a correction in the wrong direction"
+          },
+          {
+            "name": "corrected_set_within_uncorrected",
+            "predicate": "NOT significant OR significant_uncorrected",
+            "description": "FDR can only remove cells from the significant set, never add one"
+          }
+        ]
+      }
+    },
+
+    "analysis.gi_star_h3_r8": {
+      "title": "Getis-Ord Gi* per cell and variable",
+      "description": "esda.G_Local(star=True) with 999 permutations and a fixed seed, on BINARY k=1 hex contiguity weights -- binary because Gi* compares a neighbourhood SUM to the global sum, and row-standardising would turn it into a comparison of means and stop it being an intensity test. `star=True` puts the cell in its own neighbourhood, which is what lets a single intense cell register. `hotspot_class` is the FDR-corrected classification, `hotspot_class_uncorrected` the same classification at raw alpha; `p_bonferroni` is reported for comparison and is deliberately not what the class column uses.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "h3_r8", "variable", "gi_z", "p_sim", "p_fdr", "p_bonferroni",
+        "hotspot_class", "hotspot_class_uncorrected", "significant",
+        "significant_uncorrected"
+      ],
+      "properties": {
+        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
+        "variable": {"type": "string", "enum": ["raw_count", "rate_per_1k_pop"]},
+        "gi_z": {"type": "number"},
+        "p_sim": {"type": "number", "minimum": 0, "maximum": 1},
+        "p_fdr": {"type": "number", "minimum": 0, "maximum": 1},
+        "p_bonferroni": {"type": "number", "minimum": 0, "maximum": 1},
+        "hotspot_class": {
+          "type": "string",
+          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS"]
+        },
+        "hotspot_class_uncorrected": {
+          "type": "string",
+          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS"]
+        },
+        "significant": {"type": "boolean"},
+        "significant_uncorrected": {"type": "boolean"}
+      },
+      "x-table-constraints": {
+        "unique_keys": [["h3_r8", "variable"]],
+        "foreign_keys": [
+          {
+            "columns": ["h3_r8"],
+            "references": {"table": "analysis.cell_stats_h3_r8", "columns": ["h3_r8"]}
+          }
+        ],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "significant_matches_threshold",
+            "predicate": "significant = (p_sim <= p_fdr)",
+            "description": "the significance flag is the FDR test result"
+          },
+          {
+            "name": "class_ns_iff_not_significant",
+            "predicate": "(hotspot_class = 'NS') = (NOT significant)",
+            "description": "a cell is classified hot or cold exactly where the corrected test passes"
+          },
+          {
+            "name": "class_sign_matches_z",
+            "predicate": "hotspot_class = 'NS' OR (gi_z > 0) = (hotspot_class LIKE 'HOT%')",
+            "description": "HOT requires a positive z and COLD a negative one -- the label must agree with the statistic that produced it"
+          },
+          {
+            "name": "corrected_set_within_uncorrected",
+            "predicate": "NOT significant OR significant_uncorrected",
+            "description": "the FDR-significant set is a subset of the uncorrected one"
+          },
+          {
+            "name": "fdr_no_looser_than_alpha",
+            "predicate": "p_fdr <= 0.05",
+            "description": "the corrected threshold never exceeds alpha"
+          }
+        ]
+      }
+    },
+
+    "analysis.hotspot_contrast": {
+      "title": "Cells whose Gi* class changes under population normalisation",
+      "description": "The assignment's explicit ask -- 'show that population normalization changes the answer' -- as a table rather than a paragraph. One row per cell whose FDR-corrected Gi* class differs between raw counts and the per-capita rate. `contrast_kind` HOT_RAW_ONLY is volume without risk (a busy cell that is busy because that is where the people are); HOT_RATE_ONLY is risk without volume, which is what a raw-count map hides; RATE_UNDEFINED is a cell the normalised analysis could not score at all because its population is below the floor, reported rather than dropped because that is itself the finding. `place_name` is the modal snapped OSM road name in the cell: a label so the prose can name the place, not a claim that the road caused anything.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "h3_r8", "class_raw_count", "class_rate_per_1k_pop", "contrast_kind",
+        "n_crashes"
+      ],
+      "properties": {
+        "h3_r8": {"type": "string", "pattern": "^8[0-9a-f]{14}$"},
+        "class_raw_count": {
+          "type": "string",
+          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS"]
+        },
+        "class_rate_per_1k_pop": {
+          "type": "string",
+          "enum": ["HOT_99", "HOT_95", "COLD_95", "COLD_99", "NS", "RATE_UNDEFINED"]
+        },
+        "contrast_kind": {
+          "type": "string",
+          "enum": [
+            "HOT_RAW_ONLY", "HOT_RATE_ONLY", "COLD_RAW_ONLY", "COLD_RATE_ONLY",
+            "LEVEL_CHANGE", "RATE_UNDEFINED"
+          ]
+        },
+        "n_crashes": {"type": "integer", "minimum": 0},
+        "population": {"type": ["number", "null"], "minimum": 0},
+        "rate_per_1k_pop": {"type": ["number", "null"], "minimum": 0},
+        "gi_z_raw_count": {"type": ["number", "null"]},
+        "gi_z_rate_per_1k_pop": {"type": ["number", "null"]},
+        "place_name": {"type": ["string", "null"]},
+        "place_highway": {"type": ["string", "null"]}
+      },
+      "x-table-constraints": {
+        "unique_keys": [["h3_r8"]],
+        "foreign_keys": [
+          {
+            "columns": ["h3_r8"],
+            "references": {"table": "analysis.cell_stats_h3_r8", "columns": ["h3_r8"]}
+          }
+        ],
+        "row_count_min": 0,
+        "row_rules": [
+          {
+            "name": "classes_actually_differ",
+            "predicate": "class_raw_count <> class_rate_per_1k_pop",
+            "description": "every row of a contrast table is a cell whose class changed; a row where they agree does not belong here"
+          },
+          {
+            "name": "undefined_kind_matches_class",
+            "predicate": "(contrast_kind = 'RATE_UNDEFINED') = (class_rate_per_1k_pop = 'RATE_UNDEFINED')",
+            "description": "the kind and the class must tell the same story about a missing denominator"
+          },
+          {
+            "name": "undefined_has_no_rate",
+            "predicate": "class_rate_per_1k_pop <> 'RATE_UNDEFINED' OR rate_per_1k_pop IS NULL",
+            "description": "a cell the normalised analysis refused cannot carry a rate"
+          }
+        ]
+      }
+    },
+
+    "analysis.kde_surface": {
+      "title": "Kernel density surfaces at every reported bandwidth",
+      "description": "A regular grid in EPSG:26985 (NAD83 / Maryland, metres) -- named on every row rather than assumed, because a grid of bare (x, y) doubles with no frame is not a spatial output. One block of rows per bandwidth so the three surfaces can be compared on an identical grid and colour scale. `density` is a probability density per square metre and integrates to ~1 over the grid (the build asserts it, which checks the grid extent and the area units at once); `intensity_per_km2` is that times N times 1e6, i.e. expected crashes per square kilometre over the study period, which is the number an operations reader can act on. `bandwidth_method` records how each bandwidth was arrived at: cross-validated on spatially blocked folds, a Gaussian rule of thumb, or the off-the-shelf practitioner control.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "bandwidth_m", "bandwidth_method", "x_m", "y_m", "density",
+        "intensity_per_km2", "crs_epsg"
+      ],
+      "properties": {
+        "bandwidth_m": {"type": "number", "minimum": 1},
+        "bandwidth_method": {
+          "type": "string",
+          "enum": ["cv_blocked", "scott", "silverman", "practitioner"]
+        },
+        "x_m": {"type": "number"},
+        "y_m": {"type": "number"},
+        "density": {"type": "number", "minimum": 0},
+        "intensity_per_km2": {"type": "number", "minimum": 0},
+        "crs_epsg": {"type": "integer", "minimum": 1024, "maximum": 32767}
+      },
+      "x-table-constraints": {
+        "unique_keys": [["bandwidth_method", "x_m", "y_m"]],
+        "foreign_keys": [],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "projected_crs_only",
+            "predicate": "crs_epsg <> 3857",
+            "description": "EPSG:3857 is for tiles. A bandwidth measured in Web Mercator at 39.1N is wrong by 1/cos(lat) ~ 1.29"
+          },
+          {
+            "name": "density_finite",
+            "predicate": "isfinite(density) AND isfinite(intensity_per_km2)",
+            "description": "no inf/NaN in a published surface"
+          }
+        ]
+      }
+    },
+
+    "analysis.crash_year_counts": {
+      "title": "Crashes per calendar year in the study corpus",
+      "description": "The data behind the first figure, and the evidence for the period choice: a per-year table is what shows the 2020 pandemic drop and the partial final year that would otherwise be read as a spatial finding. Figures are not required to be byte-identical between runs (matplotlib embeds versions); the table behind each one is.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": ["year", "n_crashes", "n_injury", "n_fatal", "in_study_period"],
+      "properties": {
+        "year": {"type": "integer", "minimum": 1900, "maximum": 2200},
+        "n_crashes": {"type": "integer", "minimum": 0},
+        "n_injury": {"type": "integer", "minimum": 0},
+        "n_fatal": {"type": "integer", "minimum": 0},
+        "in_study_period": {"type": "boolean"}
+      },
+      "x-table-constraints": {
+        "unique_keys": [["year"]],
+        "foreign_keys": [],
+        "row_count_min": 1,
+        "row_rules": [
+          {
+            "name": "injury_within_crashes",
+            "predicate": "n_injury <= n_crashes AND n_fatal <= n_injury",
+            "description": "severity counts nest"
+          }
+        ]
+      }
+    },
+
+    "analysis.st_clusters": {
+      "title": "ST-DBSCAN clusters, tight in space and in time",
+      "description": "Clusters found with two independent thresholds -- [analysis.st_dbscan] eps_space_m in EPSG:26985 metres and eps_time_h in hours -- so a cluster is a set of crashes that are near each other AND close in time, which is the recurring-corridor result the assignment asks for rather than the year-long smear a space-only epsilon produces. sklearn's DBSCAN takes one metric, so the neighbourhood is built directly as a sparse 0/1 matrix that is true only where both conditions hold. `span_days` is the discriminator: the same run with the time condition removed is reported beside this one, and its clusters span the whole study period.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-column-order-is-contract": true,
+      "required": [
+        "cluster_id", "run", "n_crashes", "span_days", "radius_m",
+        "centroid_x_m", "centroid_y_m", "crs_epsg"
+      ],
+      "properties": {
+        "cluster_id": {"type": "integer", "minimum": 0},
+        "run": {"type": "string", "enum": ["spatiotemporal", "space_only"]},
+        "n_crashes": {"type": "integer", "minimum": 1},
+        "n_injury": {"type": "integer", "minimum": 0},
+        "n_fatal": {"type": "integer", "minimum": 0},
+        "span_days": {"type": "number", "minimum": 0},
+        "first_crash_date": {"type": ["date", "null"]},
+        "last_crash_date": {"type": ["date", "null"]},
+        "radius_m": {"type": "number", "minimum": 0},
+        "centroid_x_m": {"type": "number"},
+        "centroid_y_m": {"type": "number"},
+        "crs_epsg": {"type": "integer", "minimum": 1024, "maximum": 32767},
+        "modal_dow": {"type": ["string", "null"]},
+        "modal_hour": {"type": ["integer", "null"], "minimum": 0, "maximum": 23},
+        "dow_concentration": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "night_fraction": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "place_name": {"type": ["string", "null"]},
+        "place_highway": {"type": ["string", "null"]}
+      },
+      "x-table-constraints": {
+        "unique_keys": [["run", "cluster_id"]],
+        "foreign_keys": [],
+        "row_count_min": 0,
+        "row_rules": [
+          {
+            "name": "projected_crs_only",
+            "predicate": "crs_epsg <> 3857",
+            "description": "the spatial epsilon is metres in a projected CRS, never Web Mercator"
+          },
+          {
+            "name": "injury_within_crashes",
+            "predicate": "n_injury <= n_crashes AND n_fatal <= n_injury",
+            "description": "severity counts nest"
+          },
+          {
+            "name": "dates_ordered",
+            "predicate": "first_crash_date IS NULL OR last_crash_date IS NULL OR first_crash_date <= last_crash_date",
+            "description": "a cluster's first crash precedes its last"
+          }
+        ]
+      }
+    }
+  }
+}
