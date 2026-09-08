@@ -42,8 +42,8 @@ The crash match, recorded honestly
     AND distance <= [compliance] match_max_distance_m
 
 Distance is computed in the Phase 4 projected CRS for the row's jurisdiction
-(`config/geo.toml [crs.snap]`: MD 26985, TX 32139, FL 26958), never in
-EPSG:3857, which is wrong by 1/cos(latitude) -- 1.29 at 39N. The match count
+(`config/geo.toml [crs.snap]`: MD 26985, TX 32139, FL 26958), never in Web
+Mercator, whose scale error is 1/cos(latitude) -- 1.29 at 39N. The match count
 is reported per jurisdiction in the manifest, and it is expected to be ZERO
 almost everywhere: the fixture is synthetic, TxDOT is a bounded 100k slice and
 FARS is fatalities only, so only a Montgomery row could plausibly coincide
@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import subprocess
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -232,9 +233,9 @@ def enrich_parties(
                 )
                 # One projected CRS per jurisdiction, from config/geo.toml
                 # [crs.snap]. Maryland is a single state-plane zone (26985,
-                # metres) so it is unambiguous county-wide; 3857 would be
-                # wrong by 1/cos(39.1) = 1.288 and would silently turn the
-                # 50 m threshold into 38.8 m.
+                # metres) so it is unambiguous county-wide. Web Mercator
+                # would be wrong by 1/cos(39.1) = 1.288 and would silently
+                # turn a 50 m threshold into 38.8 m.
                 epsg = snap_mod.snap_crs_for(j)
                 # The threshold is the PARTY one from config/compliance.toml,
                 # not config/geo.toml's crash threshold. See that file for why
@@ -352,8 +353,8 @@ def match_crashes(
             stats["matched_by_jurisdiction"][jurisdiction] = 0
             continue
         # The SAME projected CRS Phase 4 snapped in, per jurisdiction. A
-        # metric threshold demands a metric CRS; 4326 degrees are not metres
-        # and 3857 metres are not metres either at these latitudes.
+        # metric threshold demands a metric CRS; 4326 degrees are not metres,
+        # and Web Mercator "metres" are not metres either at these latitudes.
         epsg = snap_mod.snap_crs_for(jurisdiction)
         stats["crs_by_jurisdiction"][jurisdiction] = epsg
         pool_g = gpd.GeoDataFrame(
@@ -401,7 +402,67 @@ def match_crashes(
             matched += 1
         stats["matched_by_jurisdiction"][jurisdiction] = matched
     stats["matched_total"] = int((out["match_method"] != MATCH_NONE).sum())
+    stats["null_model"] = _match_null_model(parties, stats)
     return out, stats
+
+
+def _match_null_model(parties: pd.DataFrame, stats: Mapping[str, Any]) -> dict[str, Any]:
+    """How many of these matches would a coincidence produce? Usually all of them.
+
+    A spatiotemporal match is only evidence of an identity link if it is
+    UNLIKELY BY CHANCE, and in a county with thousands of crashes in a two-day
+    window it is not. The null model is deliberately crude and stated as such:
+    scatter the candidate crashes uniformly over the jurisdiction envelope and
+    ask how many land inside a `match_max_distance_m` disc around each party.
+
+        E[matches] = n_parties * candidates * (pi * r^2) / envelope_area
+
+    Crashes are on roads and parties are at addresses, so uniformity is wrong
+    in both directions and this is an order of magnitude, not a probability.
+    That is enough for the only question it has to answer: if E[matches] is of
+    the same order as the observed count, NO INDIVIDUAL MATCH IS EVIDENCE OF
+    ANYTHING, and the memo must not describe the result as an identity join.
+    Recorded in `_compliance_manifest.json` so the claim is reproducible.
+    """
+    cfg = config.compliance()
+    envelope_by = dict(cfg["envelope_by_jurisdiction"])
+    radius = float(cfg["match_max_distance_m"])
+    out: dict[str, Any] = {
+        "method": "uniform-scatter over the jurisdiction envelope",
+        "radius_m": radius,
+        "caveat": ("An order of magnitude, not a probability: crashes lie on "
+                   "roads and parties at addresses, so uniformity is wrong in "
+                   "both directions. It answers one question -- whether a "
+                   "match is distinguishable from a coincidence."),
+        "by_jurisdiction": {},
+    }
+    for jurisdiction, candidates in stats.get("candidates_by_jurisdiction", {}).items():
+        name = envelope_by.get(jurisdiction)
+        n_parties = int((parties["jurisdiction"].astype(str) == jurisdiction).sum())
+        if not name or not candidates or not n_parties:
+            continue
+        env = config.envelope(name)
+        # Envelope area on the ellipsoid, from its own edge lengths -- the same
+        # geodesic machinery Phase 2 uses, so no projection is introduced for
+        # a number that only needs one significant figure.
+        height_m = c.geodesic_distance_m(env["min_lat"], env["min_lon"],
+                                         env["max_lat"], env["min_lon"])
+        width_m = c.geodesic_distance_m(
+            (env["min_lat"] + env["max_lat"]) / 2, env["min_lon"],
+            (env["min_lat"] + env["max_lat"]) / 2, env["max_lon"])
+        area_km2 = (height_m * width_m) / 1e6
+        disc_km2 = math.pi * (radius / 1000.0) ** 2
+        expected = n_parties * candidates * disc_km2 / area_km2 if area_km2 else 0.0
+        observed = int(stats["matched_by_jurisdiction"].get(jurisdiction, 0))
+        out["by_jurisdiction"][jurisdiction] = {
+            "parties": n_parties,
+            "candidate_crashes_in_date_window": int(candidates),
+            "envelope_area_km2": round(area_km2, 1),
+            "expected_matches_by_chance": round(expected, 2),
+            "observed_matches": observed,
+            "distinguishable_from_chance": bool(observed > 3 * expected),
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------
