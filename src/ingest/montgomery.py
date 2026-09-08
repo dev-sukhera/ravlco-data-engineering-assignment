@@ -204,6 +204,7 @@ def ingest_dataset(
     page_size: int = DEFAULT_PAGE_SIZE,
     max_pages: int | None = None,
     load_ts: str | None = None,
+    validate_contract: bool = False,
 ) -> dict[str, Any]:
     """Keyset-paginate one dataset into bronze. Returns a run summary."""
     base = config.sources()["montgomery"]["base"].rstrip("/")
@@ -279,7 +280,10 @@ def ingest_dataset(
             }
             for row in rows
         ]
-        pq_meta = write_rows_parquet(parquet_path, parsed)
+        pq_meta = write_rows_parquet(
+            parquet_path, parsed,
+            contract_table=f"montgomery.{dataset_id}" if validate_contract else None,
+        )
 
         store.record_artifact(
             SOURCE, dataset_id, load_ts, raw_path, kind="raw",
@@ -401,6 +405,7 @@ def main(argv: Iterable[str] | None = None) -> int:
                     name, dataset_id,
                     store=store, client=client, since=args.since,
                     page_size=args.page_size, max_pages=args.max_pages,
+                    validate_contract=True,
                     load_ts=load_ts,
                 )
             )

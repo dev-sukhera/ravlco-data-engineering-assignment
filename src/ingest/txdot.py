@@ -223,6 +223,7 @@ def sweep(
     page_size: int | None = None,
     max_pages: int | None = DEFAULT_MAX_PAGES,
     snapshot: bool = True,
+    validate_contract: bool = False,
 ) -> dict[str, Any]:
     """Run (or resume) one OID-keyset sweep into bronze."""
     meta = fetch_layer_metadata(client)
@@ -372,7 +373,10 @@ def sweep(
             )
 
         parquet_path = partition / f"page_{page_no:05d}.parquet"
-        pq_meta = write_rows_parquet(parquet_path, rows)
+        pq_meta = write_rows_parquet(
+            parquet_path, rows,
+            contract_table="txdot.cris_crash" if validate_contract else None,
+        )
 
         store.record_artifact(
             SOURCE, DATASET, load_ts, raw_path, kind="raw",
@@ -504,6 +508,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             page_size=args.page_size,
             max_pages=None if args.full else args.max_pages,
             snapshot=not args.no_oid_snapshot,
+            validate_contract=True,
         )
         summary["http"] = dict(client.stats)
 

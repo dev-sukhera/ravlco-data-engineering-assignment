@@ -75,6 +75,7 @@ from typing import Any, Iterable
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import duckdb
 
 from .. import config
 from .http import HttpClient
@@ -126,7 +127,8 @@ def _decode(raw: bytes) -> tuple[str, str]:
 
 
 def write_member_parquet(
-    dest: Path, raw: bytes, *, extra: dict[str, str]
+    dest: Path, raw: bytes, *, extra: dict[str, str],
+    contract_table: str | None = None,
 ) -> dict[str, Any]:
     """One CSV member of the ZIP -> one all-string parquet file.
 
@@ -156,6 +158,20 @@ def write_member_parquet(
         data[key] = pa.array([value] * rows, type=pa.string())
     table = pa.table(data) if data else pa.table({"_bronze_empty": pa.array([], pa.string())})
 
+    if contract_table is not None:
+        from .. import contracts
+
+        con = duckdb.connect()
+        try:
+            con.register("bronze_member_out", table)
+            contracts.validate(
+                con, "bronze_member_out", contract_table,
+                contract_path=contracts.BRONZE_CONTRACT,
+                check_row_count_min=bool(rows),
+            )
+        finally:
+            con.close()
+
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
     pq.write_table(table, tmp, compression="zstd")
@@ -170,6 +186,7 @@ def ingest_year(
     store: WatermarkStore,
     client: HttpClient,
     force: bool = False,
+    validate_contract: bool = False,
 ) -> dict[str, Any]:
     """Load one FARS year if -- and only if -- its bytes have changed."""
     dataset = str(year)
@@ -267,6 +284,10 @@ def ingest_year(
                     "_bronze_member": info.filename,
                     "_bronze_zip_sha256": got["sha256"],
                 },
+                contract_table=(
+                    f"fars.{stem}" if stem in {"accident", "vehicle", "person"}
+                    and validate_contract else None
+                ),
             )
             store.record_artifact(
                 SOURCE, dataset, load_ts, member_path, kind="parsed",
@@ -368,7 +389,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         if args.check_only:
             report = check_only(client, store, target)
         else:
-            report = [ingest_year(y, store=store, client=client, force=args.force)
+            report = [ingest_year(y, store=store, client=client, force=args.force,
+                                  validate_contract=True)
                       for y in target]
         stats = dict(client.stats)
 

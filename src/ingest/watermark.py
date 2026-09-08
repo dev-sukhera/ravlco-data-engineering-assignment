@@ -210,6 +210,7 @@ def write_rows_parquet(
     rows: Sequence[dict[str, Any]],
     *,
     extra: dict[str, Any] | None = None,
+    contract_table: str | None = None,
 ) -> dict[str, Any]:
     """Write the parsed form of a page alongside its raw bytes.
 
@@ -239,6 +240,24 @@ def write_rows_parquet(
         for col in columns
     }
     table = pa.table(data) if columns else pa.table({"_bronze_empty": pa.array([], pa.string())})
+
+    # The parsed parquet is the source->bronze boundary. Validate the Arrow
+    # table before the durable replace so a bad upstream shape cannot displace
+    # a previously valid page. Imported lazily to keep the durability helpers
+    # usable without loading the contract module at import time.
+    if contract_table is not None:
+        from .. import contracts
+
+        con = duckdb.connect()
+        try:
+            con.register("bronze_page_out", table)
+            contracts.validate(
+                con, "bronze_page_out", contract_table,
+                contract_path=contracts.BRONZE_CONTRACT,
+                check_row_count_min=bool(rows),
+            )
+        finally:
+            con.close()
 
     tmp = dest.with_name(dest.name + ".part")
     pq.write_table(table, tmp, compression="zstd")
