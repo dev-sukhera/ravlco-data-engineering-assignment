@@ -31,7 +31,7 @@ county, and those rows have no Montgomery population denominator.
 | **study corpus** | **70,692** |
 
 The 288 are itemised because *which* county matters: Prince George's 162,
-District of Columbia 46, Fairfax VA 32, Howard 29, Frederick 17, Carroll 1,
+District of Columbia 46, Fairfax VA 32, Frederick 29, Howard 17, Carroll 1,
 Arlington VA 1. A `jurisdiction = 'MD'` filter would have kept 241 of them and
 put Washington DC hot spots in a Maryland analysis. A further 49 in-county
 crashes were dropped as FARS-primary: FARS is a fatal-only census over
