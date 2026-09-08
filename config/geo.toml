@@ -285,3 +285,181 @@ row_group_size = 4096
 # prunes spatially on a file that is read whole.
 flat_row_group_size = 122880
 compression = "zstd"
+
+
+# ===========================================================================
+# Phase 5 -- spatial analysis.
+#
+# Same rule as the Phase 4 block above: every number a reviewer might want to
+# argue about lives here, and the code says why the knob exists rather than
+# what it is set to. The three that actually change a published finding are
+# `period_*` (a pandemic year in or out), `min_population_for_rate` (which
+# cells are allowed a per-capita rate at all) and `seed` (which permutation
+# draw the p-values came from) -- so all three are written into
+# `_analysis_manifest.json` on every run and quoted in ANALYSIS.md.
+# ===========================================================================
+
+[analysis]
+# The study area is a POLYGON ANSWER, not a jurisdiction label:
+# `crash_geo.pip_county_geoid = '24031'`, which is where the point actually
+# fell, not which police department filed the report. Montgomery County police
+# report crashes in Prince George's (162), the District (46) and Fairfax VA
+# (32); `jurisdiction = 'MD'` would keep all of those and then have no
+# population denominator for them, putting "hotspots" outside the county.
+# Measured 2026-09-08 -- `python -m src.analysis.build --json` prints the
+# exclusion ledger, and the counts are in ANALYSIS.md.
+study_area = "24031"
+study_area_label = "Montgomery County, MD"
+# Which feeds may contribute a crash to the study corpus. Montgomery only,
+# though 49 FARS-primary rows also fall inside 24031: FARS is a fatal-only
+# census over 2019-2024 and the Montgomery feed is all-severity over
+# 2015-2026. Mixing them would make an all-severity rate mean a different
+# thing in the FARS years than outside them, for 0.04% more rows. Counted and
+# excluded, never silently dropped.
+source_systems = ["MONTGOMERY_MD"]
+
+# Complete calendar years only, and deliberately post-2018. 2026 is partial
+# (the feed ends 2026-09-02) and a partial year in a per-cell count is a
+# spatial statistic on a calendar artefact. 2015-2018 are complete and are run
+# as the sensitivity check rather than as the headline, because the county's
+# reporting mix changes across the pandemic break and the 2020 drop (8,066 vs
+# an 11,500 baseline) is a real exposure change, not a safety improvement.
+period_start = 2019-01-01
+period_end = 2025-12-31
+# The all-years contrast the report quotes. Same code path, different bounds.
+sensitivity_period_start = 2015-01-01
+sensitivity_period_end = 2025-12-31
+
+# r8 (~0.74 km2) is the grain ASSIGNMENT.md names and the grain crash_geo
+# stores a parent for. r9 would put most Montgomery cells at 0-1 crashes,
+# where a permutation test has nothing to reject; r7 (~5.2 km2) is coarser
+# than the corridors the analysis is trying to find. This is a MAUP choice and
+# ANALYSIS.md says so.
+h3_resolution = 8
+# k=1 is the six-cell hex ring: the smallest neighbourhood that is a
+# neighbourhood at all, and the one whose geometry is uniform (unlike a
+# distance band over irregular polygons). k=2 is the sensitivity run.
+neighbor_k = 1
+
+# 99,999 permutations, and the number is forced by the FDR correction rather
+# than chosen for comfort. MEASURED on this corpus 2026-09-08 with the
+# two-sided conditional-randomisation p-value the classification actually needs
+# (see src/analysis/hotspots.py) -- Gi* cells surviving Benjamini-Hochberg at
+# alpha=0.05:
+#
+#   permutations   raw_count (n=1942)   rate_per_1k_pop (n=1351)
+#          999              0                     0
+#        9,999             63                     0
+#       99,999            124                     1
+#
+# The 999 row is not a weaker result, it is a BROKEN one, and the arithmetic
+# says why. A permutation test's finest attainable p-value is 1/(m+1).
+# Benjamini-Hochberg rejects at rank k only when p_(k) <= k*alpha/n, so the
+# most conservative rank k=1 needs 1/(m+1) <= alpha/n, i.e.
+#
+#     m + 1 >= n / alpha = 1942 / 0.05 = 38,840
+#
+# Below that, an isolated significant cell CANNOT be rejected however extreme
+# it is -- the test has run out of resolution, not out of evidence, and the
+# corrected map comes back empty for a reason that has nothing to do with the
+# data. `esda.fdr` then returns alpha/n, which is indistinguishable from a
+# genuine very-strict FDR result; src/analysis/correction.py exists to tell
+# the two apart and the build warns rather than publishing the false negative.
+#
+# 99,999 puts the floor at 1e-05, below alpha/n for both variables, so the
+# correction is limited by the evidence. Going further does not help: at this
+# budget the rate's second-smallest p is 2.1e-04 against a critical value of
+# 7.4e-05, so those p-values are RESOLVED and simply do not beat their
+# thresholds. Cost is ~13 s of the build.
+permutations = 99999
+# The seed is the difference between a result and an anecdote. esda's
+# Moran_Local and G_Local take `seed=`; esda.Moran does NOT -- it draws from
+# the global numpy RNG -- so the build seeds np.random before calling it. See
+# src/analysis/lisa.py.
+seed = 20260908
+alpha = 0.05
+# Benjamini-Hochberg via esda.fdr. ~1,900 cells at alpha=0.05 is ~95 expected
+# false positives with no correction; BH controls the expected FALSE
+# DISCOVERY PROPORTION rather than the family-wise error rate, which is the
+# right trade for a screening map whose output is "where should an engineer
+# look", not a single confirmatory test. Bonferroni (alpha/n = 2.6e-5) would
+# be defensible and much more conservative; the report reports both counts.
+fdr = true
+
+# A cell whose apportioned population is below this floor gets no per-capita
+# rate -- `rate_is_defined = false` -- rather than a rate divided by three
+# people. These are the interesting cells, not the boring ones: interchanges,
+# the airport, parkland, the Agricultural Reserve. Excluding them from the
+# NORMALISED analysis and keeping them in the RAW one is the whole point of
+# the contrast, so the count is reported, not hidden.
+min_population_for_rate = 50
+# Per 1,000 residents. A per-100k rate on a 0.74 km2 hexagon holding ~1,500
+# people produces numbers with four leading zeros.
+rate_per = 1000
+
+[analysis.crs]
+# Population apportionment: EPSG:5070 (NAD83 / CONUS Albers, equal-area). The
+# apportionment is a RATIO OF AREAS, and only an equal-area projection makes
+# that ratio the same number the census would compute. 26985 would also be
+# usable at county scale (scale error <0.02%), but 5070 is what ASSIGNMENT.md
+# names for any area and the ratio is the thing being claimed.
+apportionment = 5070
+# Every metric operation local to Montgomery -- KDE bandwidths, the KDE grid,
+# ST-DBSCAN's spatial epsilon: EPSG:26985 (NAD83 / Maryland, metres). Single
+# state-plane zone, conformal, county-wide honest. Same code as
+# [crs.snap] MD, deliberately: a bandwidth and a snap distance are the same
+# kind of metre.
+local = 26985
+# H3 weights are TOPOLOGICAL -- who touches whom on the sphere. No projection
+# is involved and none should be. See src/analysis/weights.py.
+
+[analysis.kde]
+# 100 m cells over a ~1,300 km2 county is ~130k grid points: fine enough that
+# the smallest bandwidth in the sweep (100 m) is not aliased by the grid, and
+# small enough to hold in memory and to write as a parquet table.
+grid_m = 100
+# The CV sweep, log-spaced. The lower bound is the grid pitch: a bandwidth
+# below it cannot be resolved by the surface it is drawn on.
+#
+# The upper bound was 2,000 m in the first version and that was WRONG -- the
+# blocked-CV likelihood was still rising at the top of the range, so the
+# reported optimum was censored by the search rather than found by it, and the
+# build said so (`at_range_edge`). Widened to 16 km, where the curve has a
+# genuine interior maximum at 2,947 m and falls away on both sides. Measured
+# 2026-09-08; the likelihood table is in the manifest under
+# stats.kde.cv_table. A maximum on a boundary is not a maximum, and the build
+# still warns if this range ever traps one again.
+bandwidth_min_m = 100.0
+bandwidth_max_m = 16000.0
+bandwidth_candidates = 16
+cv_folds = 5
+# Folds are blocked by H3 r7 cell (~5.2 km2), NOT drawn at random. Random
+# folds put a point and its 200 m neighbour on opposite sides of the split, so
+# the held-out log-likelihood is scored on points the training set has
+# effectively already seen; the optimiser answers that by choosing a bandwidth
+# far too small. This is the exact leak ASSIGNMENT.md's spatial-CV row
+# describes, and it is a KDE problem as much as a model problem.
+block_resolution = 7
+# The control: what a practitioner picks off the shelf without cross-
+# validating. Reported beside the CV answer so the reader can see the size of
+# the disagreement -- which on this corpus is a factor of about six.
+practitioner_bandwidth_m = 500.0
+# Points are thinned to this many for the CV sweep only (never for the final
+# surface). 12 bandwidths x 5 folds x O(n_train x n_test) is quadratic; the
+# full 72k-point corpus makes the sweep the longest step in the build by an
+# order of magnitude, and the selected bandwidth is stable well below it.
+# Sampled with the build seed, so it is reproducible.
+cv_sample_size = 8000
+
+[analysis.st_dbscan]
+# Two radii, and they are not interchangeable: 300 m is "the same corridor"
+# (about half an r8 cell, and well above the ~10 m geocoding precision), 6
+# hours is "the same part of the same day". sklearn's DBSCAN takes ONE metric,
+# so the neighbourhood is built directly as a sparse 0/1 matrix that is true
+# only when BOTH thresholds hold -- see src/analysis/st_dbscan.py.
+eps_space_m = 300.0
+eps_time_h = 6.0
+min_samples = 10
+# The contrast run: the same spatial epsilon with the time condition removed,
+# which is the year-long smear the assignment names.
+report_top_clusters = 10
