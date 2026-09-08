@@ -1122,6 +1122,11 @@ def test_all_forty_fixture_rows_match_the_committed_golden(lead_rows):
             else str(row["blocked_until_date"])
         assert actual_until == expected["blocked_until_date"], label
         assert "|".join(row["reason_codes"]) == expected["reason_codes"], label
+        expected_score = expected.get("priority_score", "")
+        if expected_score:
+            assert row["priority_score"] == float(expected_score), label
+        else:
+            assert pd.isna(row["priority_score"]), label
     if skipped:
         pytest.skip(f"road snap unavailable; {len(skipped)} snap-dependent rows "
                     f"not compared: {skipped}")
@@ -1357,7 +1362,9 @@ def test_the_score_hook_receives_only_actionable_records(lead_rows):
     statuses = {r["eligibility_status"] for r in handed}
     assert statuses <= {"ELIGIBLE", "BLOCKED_UNTIL"}
     assert "INELIGIBLE" not in statuses
-    assert all(r["calling_window_local"] is not None for r in handed)
+    assert all("calling_window_local" not in r for r in handed)
+    assert all("jurisdiction" not in r for r in handed)
+    assert all("pedestrian_involved" in r and "is_adverse" in r for r in handed)
 
 
 # ---------------------------------------------------------------------------
