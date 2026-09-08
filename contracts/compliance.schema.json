@@ -102,6 +102,21 @@
             "name": "unmatched_lead_is_source_other",
             "predicate": "match_method <> 'NO_MATCH' OR source_system = 'OTHER'",
             "description": "No matched crash means no source system to claim. Attributing an unmatched lead to MONTGOMERY_MD would be fabricating a provenance, which is the one thing Part 5 says a record may never do."
+          },
+          {
+            "name": "ineligible_is_not_scored",
+            "predicate": "eligibility_status <> 'INELIGIBLE' OR (priority_score IS NULL AND score_components IS NULL)",
+            "description": "An ineligible record must never enter a ranked contact queue."
+          },
+          {
+            "name": "admitted_lead_is_scored",
+            "predicate": "eligibility_status NOT IN ('ELIGIBLE', 'BLOCKED_UNTIL') OR (priority_score IS NOT NULL AND score_components IS NOT NULL AND isfinite(priority_score) AND json_valid(score_components))",
+            "description": "Every eligible or time-blocked record has a finite explainable score."
+          },
+          {
+            "name": "score_equals_named_contributions",
+            "predicate": "score_components IS NULL OR abs(priority_score - (CAST(json_extract(score_components, '$.severity.contribution') AS DOUBLE) + CAST(json_extract(score_components, '$.recency.contribution') AS DOUBLE) + CAST(json_extract(score_components, '$.vulnerable_road_user.contribution') AS DOUBLE) + CAST(json_extract(score_components, '$.hit_run.contribution') AS DOUBLE) + CAST(json_extract(score_components, '$.road_context.contribution') AS DOUBLE) + CAST(json_extract(score_components, '$.adverse_weather.contribution') AS DOUBLE))) < 0.000001",
+            "description": "The published priority is exactly the sum of its six named contributions."
           }
         ]
       }

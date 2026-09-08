@@ -305,6 +305,15 @@ def match_crashes(
         "match_distance_m": pd.Series([np.nan] * len(parties), dtype="float64"),
         "source_system": SOURCE_OTHER,
         "severity_ordinal": pd.Series([pd.NA] * len(parties), dtype="Int64"),
+        "pedestrian_involved": pd.Series([pd.NA] * len(parties), dtype="boolean"),
+        "bicyclist_involved": pd.Series([pd.NA] * len(parties), dtype="boolean"),
+        "hit_run": pd.Series([pd.NA] * len(parties), dtype="boolean"),
+        "fhwa_class": pd.Series([pd.NA] * len(parties), dtype="Int64"),
+        "is_adverse": pd.Series([pd.NA] * len(parties), dtype="boolean"),
+        "crash_snap_status": None,
+        "osm_maxspeed_mph": np.nan,
+        "weather_status": None,
+        "era5_precipitation_mm": np.nan,
     })
     fact = Path(gold_root) / "fact_crash.parquet"
     stats: dict[str, Any] = {
@@ -326,13 +335,29 @@ def match_crashes(
     con = con or duckdb.connect()
     try:
         path = str(fact).replace("'", "''")
+        road = str(Path(gold_root, "dim_road_class.parquet")).replace("'", "''")
+        weather = str(Path(gold_root, "dim_weather_condition.parquet")).replace("'", "''")
+        geo = str(Path(gold_root, "crash_geo.parquet")).replace("'", "''")
+        geo_select = (
+            "g.snap_status, g.osm_maxspeed_mph, g.weather_status, "
+            "g.era5_precipitation_mm" if Path(gold_root, "crash_geo.parquet").exists()
+            else "NULL::VARCHAR snap_status, NULL::DOUBLE osm_maxspeed_mph, "
+                 "NULL::VARCHAR weather_status, NULL::DOUBLE era5_precipitation_mm"
+        )
+        geo_join = (f"LEFT JOIN read_parquet('{geo}') g USING (crash_sk)"
+                    if Path(gold_root, "crash_geo.parquet").exists() else "")
         crashes = con.execute(
-            f"""SELECT crash_sk, jurisdiction, primary_source_system, crash_date,
-                       latitude, longitude, severity_ordinal
-                FROM read_parquet('{path}')
-                WHERE crash_date BETWEEN DATE '{lo_date}' AND DATE '{hi_date}'
-                  AND latitude IS NOT NULL AND longitude IS NOT NULL
-                ORDER BY crash_sk"""
+            f"""SELECT f.crash_sk, f.jurisdiction, f.primary_source_system,
+                       f.crash_date, f.latitude, f.longitude, f.severity_ordinal,
+                       f.pedestrian_involved, f.bicyclist_involved, f.hit_run,
+                       r.fhwa_class, w.is_adverse, {geo_select}
+                FROM read_parquet('{path}') f
+                LEFT JOIN read_parquet('{road}') r USING (road_class_sk)
+                LEFT JOIN read_parquet('{weather}') w USING (weather_condition_sk)
+                {geo_join}
+                WHERE f.crash_date BETWEEN DATE '{lo_date}' AND DATE '{hi_date}'
+                  AND f.latitude IS NOT NULL AND f.longitude IS NOT NULL
+                ORDER BY f.crash_sk"""
         ).df()
     finally:
         if owned:
@@ -399,6 +424,14 @@ def match_crashes(
             severity = candidates.loc[best, "severity_ordinal"]
             out.loc[idx, "severity_ordinal"] = (
                 pd.NA if pd.isna(severity) else int(severity))
+            for column in ("pedestrian_involved", "bicyclist_involved", "hit_run",
+                           "fhwa_class", "is_adverse", "osm_maxspeed_mph", "weather_status",
+                           "era5_precipitation_mm"):
+                value = candidates.loc[best, column]
+                out.at[idx, column] = pd.NA if pd.isna(value) else value
+            snap_value = candidates.loc[best, "snap_status"]
+            out.at[idx, "crash_snap_status"] = (
+                pd.NA if pd.isna(snap_value) else snap_value)
             matched += 1
         stats["matched_by_jurisdiction"][jurisdiction] = matched
     stats["matched_total"] = int((out["match_method"] != MATCH_NONE).sum())
@@ -612,6 +645,19 @@ def build_records(
             "source_system": row.get("source_system"),
             "severity_ordinal": (None if pd.isna(row.get("severity_ordinal"))
                                  else int(row["severity_ordinal"])),
+            "pedestrian_involved": _bool_or_none(row.get("pedestrian_involved")),
+            "bicyclist_involved": _bool_or_none(row.get("bicyclist_involved")),
+            "hit_run": _bool_or_none(row.get("hit_run")),
+            "fhwa_class": (None if pd.isna(row.get("fhwa_class"))
+                           else int(row["fhwa_class"])),
+            "is_adverse": _bool_or_none(row.get("is_adverse")),
+            "crash_snap_status": (None if pd.isna(row.get("crash_snap_status"))
+                                  else row.get("crash_snap_status")),
+            "osm_maxspeed_mph": _float_or_none(row.get("osm_maxspeed_mph")),
+            "weather_status": (None if pd.isna(row.get("weather_status"))
+                               else row.get("weather_status")),
+            "era5_precipitation_mm": _float_or_none(
+                row.get("era5_precipitation_mm")),
             "fixture_note": row.get("fixture_note") or None,
         })
     return records, provenances, revocations
@@ -639,6 +685,15 @@ def lead_row(
     window = decision.calling_window
     provenance = record.get("consent_provenance")
     scrub_age = record.get("dnc_scrub_age_days")
+    priority_score = None
+    score_components = None
+    if decision.status in ("ELIGIBLE", "BLOCKED_UNTIL"):
+        # Imported here to keep the compliance module usable on its own while
+        # making the stage boundary explicit: legality is decided first.
+        from ..scoring.score import score_lead
+        scored = score_lead(record, as_of=as_of)
+        priority_score = scored.priority_score
+        score_components = scored.score_components
     return {
         "lead_id": record["lead_id"],
         "source_system": record.get("source_system") or SOURCE_OTHER,
@@ -683,10 +738,8 @@ def lead_row(
         "decision_lineage_id": decision.decision_lineage_id,
         "evaluated_at": decision.evaluated_at.isoformat(),
         "ruleset_version": decision.ruleset_version,
-        # Phase 7. Emitted as null rather than omitted, so a consumer sees the
-        # field exists and is not yet populated. See `score_inputs` below.
-        "priority_score": None,
-        "score_components": None,
+        "priority_score": priority_score,
+        "score_components": score_components,
     }
 
 
@@ -712,27 +765,31 @@ def lineage_columns(record: Mapping[str, Any], decision: EligibilityDecision,
 def score_inputs(
     rows: Sequence[Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
-    """The Phase 7 hook: what the engine hands a scorer, and nothing more.
+    """Crash-only facts handed to scoring after the compliance status gate.
 
     ELIGIBLE and BLOCKED_UNTIL records only. An INELIGIBLE record is not a
     lead with a low score, it is not a lead -- ranking it would put it in a
     queue, and a queue is where things get dialled. `priority_score` and
     `score_components` stay null in this phase; the contract says
     "Named contributions. No opaque blob", so whatever fills them will be a
-    dict of named terms.
+    dict of named terms. Geography and contact fields are deliberately absent:
+    they may route or block a lead, but they cannot increase its priority.
     """
     return [
         {
             "lead_id": r["lead_id"],
-            "jurisdiction": r["jurisdiction"],
             "eligibility_status": r["eligibility_status"],
-            "blocked_until_date": r["blocked_until_date"],
             "severity_ordinal": r["severity_ordinal"],
             "incident_date": r["incident_date"],
-            "h3_r8": r["geo"]["h3_r8"],
-            "census_bg": r["geo"]["census_bg"],
-            "iana_timezone": r["geo"]["iana_timezone"],
-            "calling_window_local": r["contact"]["calling_window_local"],
+            "pedestrian_involved": r.get("pedestrian_involved"),
+            "bicyclist_involved": r.get("bicyclist_involved"),
+            "hit_run": r.get("hit_run"),
+            "fhwa_class": r.get("fhwa_class"),
+            "is_adverse": r.get("is_adverse"),
+            "snap_status": r.get("crash_snap_status"),
+            "osm_maxspeed_mph": r.get("osm_maxspeed_mph"),
+            "weather_status": r.get("weather_status"),
+            "era5_precipitation_mm": r.get("era5_precipitation_mm"),
         }
         for r in rows
         if r["eligibility_status"] in ("ELIGIBLE", "BLOCKED_UNTIL")
@@ -769,3 +826,9 @@ def _float_or_none(value: Any) -> float | None:
     if value is None or pd.isna(value):
         return None
     return round(float(value), 2)
+
+
+def _bool_or_none(value: Any) -> bool | None:
+    if value is None or pd.isna(value):
+        return None
+    return bool(value)

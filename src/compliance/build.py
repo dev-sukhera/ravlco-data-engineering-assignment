@@ -8,7 +8,7 @@
 
 Stage order, and which parts of it are a correctness constraint
 ---------------------------------------------------------------
-    vault -> enrich -> match -> consent artefacts -> evaluate
+    vault -> enrich -> match -> consent artefacts -> evaluate -> score
           -> crash-only -> exclusion table -> validate -> write -> manifest
 
 `evaluate` cannot run before `enrich`, because four gates read fields the geo
@@ -84,6 +84,7 @@ from . import vault as vault_mod
 from .engine import EligibilityEngine
 from .lineage import LINEAGE_COLUMNS, LineageStore
 from .reason_codes import IdentityProvenance
+from ..scoring import score as score_mod
 
 log = logging.getLogger("compliance.build")
 
@@ -149,9 +150,8 @@ LEADS_SCHEMA = pa.schema([
     ("reason_codes", pa.list_(pa.string())), ("legal_basis", pa.list_(pa.string())),
     ("decision_lineage_id", pa.string()), ("evaluated_at", _TS),
     ("ruleset_version", pa.string()),
-    # Phase 7 leaves these null. Typed anyway: an all-null object column has
-    # no type, and a schema that depends on the DATA is what a contract exists
-    # to prevent (the same argument Phase 4 makes for its string columns).
+    # JSON text here is the parquet encoding of the object carried by the lead
+    # contract and CSV.  An explicit type keeps an all-null small run stable.
     ("priority_score", pa.float64()), ("score_components", pa.string()),
     ("party_token", pa.string()), ("party_id_label", pa.string()),
     ("crash_sk", pa.int64()), ("match_method", pa.string()),
@@ -225,7 +225,7 @@ class ComplianceManifest:
 
 def build_sha(
     *, gold_hashes: Mapping[str, str], ruleset_sha: str, blackout_sha: str,
-    fixture_sha: str, npa_sha: str, as_of: date,
+    fixture_sha: str, npa_sha: str, as_of: date, scoring_sha: str = "",
 ) -> str:
     """A hash of the INPUTS. Never of the build time, never of the output.
 
@@ -239,9 +239,10 @@ def build_sha(
         h.update(f"{name}={sha}".encode())
     for label, value in (("ruleset", ruleset_sha), ("blackout", blackout_sha),
                          ("fixture", fixture_sha), ("npa", npa_sha),
-                         ("as_of", as_of.isoformat())):
+                         ("as_of", as_of.isoformat()), ("scoring", scoring_sha)):
         h.update(f"{label}={value}".encode())
     h.update(json.dumps(config.compliance(), sort_keys=True, default=str).encode())
+    h.update(json.dumps(config.scoring(), sort_keys=True, default=str).encode())
     return h.hexdigest()
 
 
@@ -321,10 +322,12 @@ def build_compliance(
     npa_path = config.compliance_path("npa_timezone_path")
 
     hashes = gold_hashes(gold)
+    scoring_path = config.CONFIG_DIR / "scoring.toml"
+    scoring_sha = _sha(scoring_path)
     sha = build_sha(
         gold_hashes=hashes, ruleset_sha=engine.rules.sha256,
         blackout_sha=engine.blackout_sha256, fixture_sha=_sha(fixture),
-        npa_sha=_sha(npa_path), as_of=as_of,
+        npa_sha=_sha(npa_path), as_of=as_of, scoring_sha=scoring_sha,
     )
     engine.build_sha = sha
     geo_sha = geo_build_sha(gold)
@@ -340,6 +343,7 @@ def build_compliance(
                      "rows": len(engine.blackout)},
         "npa_timezone": {"path": str(npa_path), "sha256": _sha(npa_path)},
         "fixture": {"path": str(fixture), "sha256": _sha(fixture)},
+        "scoring": {"path": str(scoring_path), "sha256": scoring_sha},
         "compliance_build_sha": sha,
         "config": dict(sorted(config.compliance().items())),
     }
@@ -390,6 +394,7 @@ def build_compliance(
     ingested_at, ingested_basis = leads_mod.fixture_ingested_at(fixture, as_of)
     store = LineageStore.open(out / f"{DECISION_LINEAGE}.parquet")
     rows: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     lineage_rows: list[dict[str, Any]] = []
     for record in records:
         decision = engine.evaluate(record)
@@ -399,6 +404,13 @@ def build_compliance(
                                  as_of=as_of, geo_build_sha=geo_sha)
         row.update(leads_mod.lineage_columns(record, decision, build_sha=sha,
                                              geo_build_sha=geo_sha))
+        candidates.append({**row, **{
+            key: record.get(key) for key in (
+                "pedestrian_involved", "bicyclist_involved", "hit_run",
+                "fhwa_class", "is_adverse", "crash_snap_status",
+                "osm_maxspeed_mph", "weather_status", "era5_precipitation_mm"
+            )
+        }})
         # Normalised ONCE, here, so the parquet, the CSV and the jsonschema
         # payload are all the same object. pandas' float NaN is not JSON null
         # and `jsonschema` rejects it against `["string", "null"]`; a row that
@@ -406,10 +418,21 @@ def build_compliance(
         # the committed schema-check file exists to make impossible.
         rows.append(_denan(row))
 
+    # -- 6. score after the legal status gate ---------------------------
+    scored = score_mod.score_leads(
+        leads_mod.score_inputs(candidates), as_of=as_of
+    )
+    scores_by_id = {item["lead_id"]: item for item in scored}
+    for row in rows:
+        item = scores_by_id.get(row["lead_id"])
+        if item is not None:
+            row["priority_score"] = item["priority_score"]
+            row["score_components"] = item["score_components"]
+
     manifest.stats["fixture"] = _fixture_stats(rows, records, engine, ingested_basis)
     manifest.stats["traps"] = _trap_derivations(records, rows)
 
-    # -- 6. the crash-only (production-truth) run -----------------------
+    # -- 7. the crash-only (production-truth) run -----------------------
     crash_rows: list[dict[str, Any]] = []
     if not skip_crash_only:
         limit = (crash_only_limit if crash_only_limit is not None
@@ -419,10 +442,10 @@ def build_compliance(
         for row in crash_rows:
             store.add(row.pop("_lineage_row"))
 
-    # -- 7. the exclusion table -----------------------------------------
+    # -- 8. the exclusion table -----------------------------------------
     exclusion = _exclusion_by_code(engine, rows, crash_rows)
 
-    # -- 8. monitoring and retention ------------------------------------
+    # -- 9. monitoring and retention ------------------------------------
     monitor = fl_mod.Monitor.from_rules(engine.rules)
     manifest.stats["fl_incompleteness"] = _fl_stats(monitor, rows, gold, as_of, cfg)
     manifest.stats["retention"] = retention_mod.as_manifest(
@@ -439,7 +462,7 @@ def build_compliance(
         )
     )
 
-    # -- 9. validate BEFORE the first write -----------------------------
+    # -- 10. validate BEFORE the first write ----------------------------
     tables = {
         LEADS: pa.Table.from_pylist(
             [_arrow_lead(row) for row in rows], schema=LEADS_SCHEMA),
@@ -470,7 +493,7 @@ def build_compliance(
                 + "\n".join(f"  {r['lead_id']}: {r['error']}" for r in failed[:5])
             )
 
-        # -- 10. write --------------------------------------------------
+        # -- 11. write --------------------------------------------------
         out.mkdir(parents=True, exist_ok=True)
         for name, table in tables.items():
             _contract_table, order = TABLE_SPECS[name]
@@ -506,9 +529,10 @@ def build_compliance(
             row_results, check_dest, ruleset_version=engine.rules.version, as_of=as_of
         )
 
-    manifest.stats["score_hook"] = {
+    manifest.stats["scoring"] = {
         "phase": 7,
-        "rows_handed_to_scorer": len(leads_mod.score_inputs(rows)),
+        "rows_handed_to_scorer": len(scored),
+        "config_sha256": scoring_sha,
         "note": ("ELIGIBLE and BLOCKED_UNTIL only. An INELIGIBLE record is not a "
                  "lead with a low score, it is not a lead."),
     }
@@ -833,7 +857,8 @@ def validate_lead_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
 # the committed deliverables
 # ---------------------------------------------------------------------------
 
-CSV_NESTED = ("geo", "contact", "consent", "reason_codes", "legal_basis")
+CSV_NESTED = ("geo", "contact", "consent", "reason_codes", "legal_basis",
+              "score_components")
 
 
 def write_sample_csv(rows: Sequence[Mapping[str, Any]], dest: Path) -> dict[str, Any]:
@@ -920,6 +945,10 @@ _ARROW_TS_FIELDS = ("ingested_at", "evaluated_at")
 
 def _arrow_lead(row: Mapping[str, Any]) -> dict[str, Any]:
     out = {k: _denan(row.get(k)) for k in LEADS_SCHEMA.names}
+    if isinstance(out.get("score_components"), dict):
+        out["score_components"] = json.dumps(
+            out["score_components"], sort_keys=True, separators=(",", ":")
+        )
     for field in _ARROW_DATE_FIELDS:
         out[field] = _as_date(out.get(field))
     for field in _ARROW_TS_FIELDS:
