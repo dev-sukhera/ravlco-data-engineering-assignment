@@ -23,6 +23,8 @@ gold/
 
 # Python
 .venv/
+.dagster/
+dagster_home/
 venv/
 __pycache__/
 *.py[cod]

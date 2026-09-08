@@ -83,6 +83,13 @@ def scoring() -> dict[str, Any]:
 
 
 @functools.cache
+def operability() -> dict[str, Any]:
+    """config/operability.toml -- retries and recovery boundaries."""
+    with (CONFIG_DIR / "operability.toml").open("rb") as fh:
+        return tomllib.load(fh)["operability"]
+
+
+@functools.cache
 def compliance() -> dict[str, Any]:
     """config/compliance.toml [compliance] -- the eligibility engine's run.
 

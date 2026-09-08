@@ -1,0 +1,14 @@
+# Dagster retries the whole network asset three times. Tenacity inside each
+# ingester handles individual HTTP 429/5xx responses; this outer retry covers
+# process loss, exhausted HTTP retries, and transient filesystem failures.
+[operability]
+network_max_retries = 3
+network_retry_delay_seconds = 30
+
+# The daily partition begins before the oldest configured FARS year. It is a
+# load-date recovery key, not a crash-date watermark; late records stay visible.
+montgomery_partition_start = "2019-01-01"
+
+# The append-only lineage prefix is deliberately small enough to check cheaply
+# on every observation and large enough to detect non-tail rewrites.
+lineage_prefix_rows = 100

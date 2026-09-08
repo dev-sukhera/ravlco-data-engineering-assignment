@@ -27,3 +27,7 @@ esda>=2.10          # Moran's I / LISA, Getis-Ord Gi*, Benjamini-Hochberg fdr()
 libpysal>=4.15      # the W spatial-weights object esda takes
 scikit-learn>=1.9   # KernelDensity + GroupKFold for the blocked-CV bandwidth
 scipy>=1.18         # cKDTree for the ST-DBSCAN two-radius neighbourhood
+
+# Phase 8 orchestration (Dagster OSS supplies the asset graph and local UI)
+dagster==1.13.21
+dagster-webserver==1.13.21
