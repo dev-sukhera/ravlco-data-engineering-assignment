@@ -1,0 +1,1125 @@
+# =============================================================================
+# The contact-eligibility ruleset. THIS FILE IS THE LAW.
+# =============================================================================
+#
+# src/compliance/engine.py reads this file and config/blackout_windows.csv, and
+# nothing else in the codebase states a legal requirement. There is no literal
+# 31, no literal "08:00", and no branch that names a state anywhere in
+# src/compliance/. If a rule is not here, the engine does not apply it; if a
+# number is not here, the engine does not know it.
+#
+# WHY DATA AND NOT CODE
+# ---------------------
+# ASSIGNMENT.md Part 9 will ask, live: "Ohio just enacted a 45-day accident
+# solicitation window, effective in three weeks." The answer must be a row and
+# a version bump, demonstrable in under a minute, with no file under src/
+# changed. tests/test_compliance.py::test_ohio_row_added_without_code_change
+# hashes src/compliance/ before and after and asserts exactly that.
+#
+# EVERY RULE IS EFFECTIVE-DATED
+# -----------------------------
+# `effective_from` / `effective_to` (null = still in force). A legal change is
+# a NEW ROW plus a version bump -- never an edit to an existing row, because a
+# decision written eighteen months ago has to remain readable against the
+# ruleset that produced it. The engine evaluates only rules in force at the
+# run's `as_of`, so replaying an old `as_of` replays the old law.
+#
+# Two rows below exist purely to show this working against ASSIGNMENT.md 5d:
+#   * CONSENT_ONE_TO_ONE has effective_from AFTER effective_to. It was vacated
+#     before it ever bound, so it is NEVER in force -- and it is present, not
+#     deleted, because lead buyers still require it contractually and a future
+#     ruleset may need to switch it on for one seller.
+#   * CONSENT_WRITTEN_REQUIRED_NATIONAL closes on 2026-02-24 and
+#     CONSENT_WRITTEN_REQUIRED_EX_5TH opens on 2026-02-25. That pair IS
+#     Bradford v. Sovereign Pest Control. Moving `as_of` across those dates
+#     moves a Texas decision with no code change.
+#
+# VERSIONING
+# ----------
+# `version` is semver and is stamped on every decision and every lineage row.
+# The loader refuses two things, both of which make a version meaningless:
+#   * a version that does not match config/compliance.toml's expectation, and
+#   * a version whose content hash does not match `content_sha256_prefix` below
+#     -- i.e. a rule edited without a version bump, OR a version bumped with no
+#     rule change.
+# Bump the version and update `content_sha256_prefix` together. The loader's
+# error message prints the value to paste.
+#
+# CITATIONS
+# ---------
+# Every rule carries `legal_basis`, verified against primary sources on
+# 2026-09-08. Where a practitioner summary and the statute text disagreed the
+# statute text won; the three places that happened are recorded in
+# COMPLIANCE.md and in ai docs/implementation/phase6-compliance-report.md.
+# These are engineering readings of primary sources, not legal advice.
+
+version: 1.0.0
+ruleset_id: crash-to-contact
+verified_on: 2026-09-08
+content_sha256_prefix: fe34744058f1ba0b
+
+# Mirrored in config/compliance.toml; the loader asserts they agree.
+window_arithmetic: exclusive
+
+# ---------------------------------------------------------------------------
+# what a reason code MEANS for the status computation
+# ---------------------------------------------------------------------------
+# A code names a failure. A disposition says what kind of failure it is, and
+# that is what the precedence rule below consumes. Keeping the two apart is
+# what lets a statute change the CONSEQUENCE of a failure without renaming the
+# code, so an old decision stays legible.
+dispositions:
+  BAR:
+    description: >-
+      Non-curable on this record as it stands. No date and no refresh clears
+      it; a different record, a different provenance or a consent that does
+      not yet exist would be required. Forces INELIGIBLE.
+  HOLD_UNTIL_DATE:
+    description: >-
+      A statutory waiting period that HAS a computable end. Yields
+      BLOCKED_UNTIL with the latest such date across every gate that binds.
+  HOLD_UNTIL_REFRESH:
+    description: >-
+      Curable, but by re-running a lookup rather than by waiting for a date --
+      a stale DNC scrub, an unresolved line type, an RND "No Data", a missing
+      anchor date. There is no date to publish, so the honest status is
+      INELIGIBLE with the code attached, NOT BLOCKED_UNTIL with an invented
+      date. COMPLIANCE.md explains the distinction; it is the difference
+      between "not yet" and "we do not know".
+  NOTE:
+    description: >-
+      Recorded on the decision and counted in the exclusion table, but does
+      not by itself change the status. Used where the restriction it names is
+      already enforced by another gate (VoIP routes to the wireless tier,
+      whose consent requirement the consent gate enforces).
+  AFFIRMATIVE:
+    description: >-
+      A proven permission with a citation. ELIGIBLE requires at least one.
+
+# ---------------------------------------------------------------------------
+# status precedence -- ASSIGNMENT.md Part 5, brief 3.3
+# ---------------------------------------------------------------------------
+# Evaluated top to bottom; the first clause whose condition holds wins. The
+# default disposition is INELIGIBLE and it is the LAST clause, not a fallback
+# hidden in code: a record that fails nothing but proves nothing is ineligible
+# and says so with NO_AFFIRMATIVE_BASIS.
+status_precedence:
+  - status: INELIGIBLE
+    when_any_disposition: [BAR, HOLD_UNTIL_REFRESH]
+    blocked_until: null
+    notes: >-
+      A non-curable failure wins even where a time window ALSO applies. A
+      record that is both DNC-listed and inside the Texas 31-day window is
+      INELIGIBLE, not BLOCKED_UNTIL -- publishing a date would tell the
+      business the record becomes contactable on that date, which is false.
+      Both codes are still emitted; only the status collapses.
+  - status: BLOCKED_UNTIL
+    when_any_disposition: [HOLD_UNTIL_DATE]
+    blocked_until: max
+    notes: >-
+      Time windows alone. `blocked_until_date` is the MAXIMUM over every time
+      gate that binds -- the Florida interaction depends on this: the 60-day
+      data gate is longer than the 30-day bar rule, so the data gate binds.
+  - status: ELIGIBLE
+    when_any_disposition: [AFFIRMATIVE]
+    blocked_until: null
+    notes: No failures AND a cited affirmative basis.
+  - status: INELIGIBLE
+    default: true
+    emit_reason_code: NO_AFFIRMATIVE_BASIS
+    notes: >-
+      The assignment's stated default, written down. Eligibility is proven,
+      never assumed, so the absence of any affirmative basis is itself the
+      reason and it is emitted as a code so `reason_codes` is never empty.
+
+# ---------------------------------------------------------------------------
+# severity order -- brief 3.3
+# ---------------------------------------------------------------------------
+# source bars > provenance > consent > DNC/RND > time windows >
+# channel/line/window > data quality > affirmative.
+#
+# This orders the `reason_codes` array on every decision and the `legal_basis`
+# array is emitted PARALLEL to it, same length, same order. A code that is
+# emitted but not listed here is a loader error: an unordered code would sort
+# nondeterministically and the output bytes would stop being reproducible.
+reason_code_severity_order:
+  # source bars
+  - DPPA_NO_PERMISSIBLE_USE
+  - TX_REDACTED_NO_CONTACT_PII
+  - MD_MVA_TELEPHONE_SOLICITATION_BAR
+  - FL_CRASH_REPORT_CONFIDENTIAL
+  # provenance
+  - PROVENANCE_UNKNOWN
+  # consent
+  - CONSENT_REVOKED
+  - CONSENT_UNVERIFIABLE
+  - CONSENT_ABSENT
+  - CONSENT_FORM_NOT_WRITTEN
+  - CONSENT_NOT_ONE_TO_ONE
+  # DNC / RND
+  - DNC_LISTED
+  - INTERNAL_DNC
+  - RND_REASSIGNED
+  - RND_NO_DATA_NO_SAFE_HARBOR
+  - RND_RESPONSE_UNRESOLVED
+  - DNC_SCRUB_STALE
+  # time windows
+  - FL_CRASH_REPORT_60D
+  - FL_SOLICITATION_30D
+  - TX_SOLICITATION_31D
+  - AVIATION_45D
+  # Placeholder slot for a time-window code DERIVED from a blackout row that
+  # this file does not name -- the Ohio live-defence case. A code that is not
+  # in this list would sort nondeterministically and break byte-identity, so
+  # derived codes take THIS index and tie-break on the code string. That is
+  # what makes "add a row to blackout_windows.csv" a complete change: no edit
+  # to this file is required for the new jurisdiction to block correctly.
+  - __DERIVED_TIME_WINDOW__
+  - ANCHOR_DATE_MISSING
+  # channel / line / window
+  - LIVE_SOLICITATION_PROHIBITED
+  - LINE_TYPE_UNRESOLVED
+  - LINE_TYPE_VOIP_RESTRICTED
+  - LINE_TYPE_STALE
+  - OUTSIDE_CALLING_WINDOW
+  # data quality
+  - COORDINATE_OUT_OF_ENVELOPE
+  - GEOCODE_TIER_INSUFFICIENT
+  - SNAP_DISTANCE_EXCEEDED
+  - TIMEZONE_UNRESOLVED
+  # the default
+  - NO_AFFIRMATIVE_BASIS
+  # affirmative
+  - ELIGIBLE_CONSENTED
+  - ELIGIBLE_EBR
+
+code_dispositions:
+  DPPA_NO_PERMISSIBLE_USE: BAR
+  TX_REDACTED_NO_CONTACT_PII: BAR
+  MD_MVA_TELEPHONE_SOLICITATION_BAR: BAR
+  FL_CRASH_REPORT_CONFIDENTIAL: BAR
+  PROVENANCE_UNKNOWN: BAR
+  CONSENT_REVOKED: BAR
+  CONSENT_UNVERIFIABLE: BAR
+  CONSENT_ABSENT: BAR
+  CONSENT_FORM_NOT_WRITTEN: BAR
+  CONSENT_NOT_ONE_TO_ONE: BAR
+  DNC_LISTED: BAR
+  INTERNAL_DNC: BAR
+  RND_REASSIGNED: BAR
+  RND_NO_DATA_NO_SAFE_HARBOR: HOLD_UNTIL_REFRESH
+  RND_RESPONSE_UNRESOLVED: HOLD_UNTIL_REFRESH
+  DNC_SCRUB_STALE: HOLD_UNTIL_REFRESH
+  FL_CRASH_REPORT_60D: HOLD_UNTIL_DATE
+  FL_SOLICITATION_30D: HOLD_UNTIL_DATE
+  TX_SOLICITATION_31D: HOLD_UNTIL_DATE
+  AVIATION_45D: HOLD_UNTIL_DATE
+  __DERIVED_TIME_WINDOW__: HOLD_UNTIL_DATE
+  ANCHOR_DATE_MISSING: HOLD_UNTIL_REFRESH
+  LIVE_SOLICITATION_PROHIBITED: BAR
+  LINE_TYPE_UNRESOLVED: HOLD_UNTIL_REFRESH
+  LINE_TYPE_VOIP_RESTRICTED: NOTE
+  LINE_TYPE_STALE: HOLD_UNTIL_REFRESH
+  OUTSIDE_CALLING_WINDOW: BAR
+  COORDINATE_OUT_OF_ENVELOPE: BAR
+  GEOCODE_TIER_INSUFFICIENT: BAR
+  SNAP_DISTANCE_EXCEEDED: BAR
+  TIMEZONE_UNRESOLVED: BAR
+  NO_AFFIRMATIVE_BASIS: BAR
+  ELIGIBLE_CONSENTED: AFFIRMATIVE
+  ELIGIBLE_EBR: AFFIRMATIVE
+
+# ---------------------------------------------------------------------------
+# federal judicial circuit per jurisdiction
+# ---------------------------------------------------------------------------
+# Needed because ASSIGNMENT.md 5d(2) made the written-consent requirement
+# CIRCUIT-DEPENDENT. Data, not a lookup in code, so adding a state is a row.
+jurisdiction_circuit:
+  MD: "4th"
+  TX: "5th"
+  FL: "11th"
+  OH: "6th"
+  US: null
+
+# ---------------------------------------------------------------------------
+# blackout row -> reason code
+# ---------------------------------------------------------------------------
+# config/blackout_windows.csv is the (jurisdiction, record_type) ->
+# earliest_contact_date table and carries the days, the anchor and the
+# citation. It does NOT carry a reason code, because the scaffold's columns
+# are fixed and adding one would change a file a reviewer diffs.
+#
+# A row this map does not name still produces a code, built from the row
+# itself by `derived_code_template`. That is deliberate and it is the live-
+# defence answer: appending
+#
+#     OH,written_solicitation,45,incident_date,"Ohio R. Prof. Cond. 7.3(b)(3)",
+#
+# to the CSV makes Ohio block with OH_WRITTEN_SOLICITATION_45D, the citation
+# from the CSV's own legal_basis column, and NO edit to this file and no file
+# under src/ touched at all.
+blackout_reason_codes:
+  map:
+    FL/crash_report: FL_CRASH_REPORT_60D
+    FL/written_solicitation: FL_SOLICITATION_30D
+    TX/written_solicitation: TX_SOLICITATION_31D
+    US/aviation_accident: AVIATION_45D
+  derived_code_template: "{jurisdiction}_{record_type}_{days}D"
+  derived_severity_marker: __DERIVED_TIME_WINDOW__
+  anchor_missing_reason_code: ANCHOR_DATE_MISSING
+  anchor_missing_legal_basis: >-
+    The statute anchors on a date we do not have. The waiting period cannot be
+    shown to have elapsed, so the gate stays closed with no publishable
+    `blocked_until_date`; inventing an anchor is how a criminal waiting period
+    gets skipped.
+  wildcard_jurisdiction: US
+  wildcard_notes: >-
+    A `US` row applies only to a record that DECLARES the row's record_type in
+    `record_types`. Without that, every crash in the corpus would inherit the
+    aviation window, which is the failure mode a wildcard row exists to test.
+
+# ===========================================================================
+# SOURCE GATES -- ASSIGNMENT.md 5b
+# ===========================================================================
+# Keyed on `identity_provenance` (an explicit INPUT field, never inferred) and
+# on `jurisdiction`. `when` is an AND over fields, each value a membership
+# list; `unless` suppresses the rule when ALL its fields match. `null` in a
+# list matches a missing value; "*" matches any non-null value.
+source_gates:
+
+  - id: SRC_PROVENANCE_UNKNOWN
+    reason_code: PROVENANCE_UNKNOWN
+    legal_basis: >-
+      18 U.S.C. 2721(b) (disclosure lawful only for an enumerated permissible
+      use, which cannot be stated for a record of unknown provenance);
+      ASSIGNMENT.md Part 5 ("A record whose provenance you cannot state is a
+      record that cannot be contacted").
+    when:
+      identity_provenance: [UNKNOWN, null]
+    params: {}
+    effective_from: 1994-09-13
+    effective_to: null
+    notes: >-
+      Fails closed by construction: a record that never carried the field is
+      matched by the `null` member, so forgetting to populate provenance is an
+      exclusion and not a silent pass.
+
+  - id: SRC_DPPA_MOTOR_VEHICLE_RECORD
+    reason_code: DPPA_NO_PERMISSIBLE_USE
+    legal_basis: >-
+      18 U.S.C. 2721(b); solicitation appears only at 2721(b)(12) and requires
+      consent obtained BY THE STATE, which no state runs at scale.
+      Maracich v. Spears, 570 U.S. 48 (2013), forecloses the 2721(b)(4)
+      litigation exception for attorney client-solicitation. Penalties:
+      18 U.S.C. 2724 (actual damages, 2,500 USD statutory floor per record,
+      punitive damages and fees).
+    when:
+      identity_provenance: [MOTOR_VEHICLE_RECORD]
+    params: {}
+    effective_from: 1994-09-13
+    effective_to: null
+    notes: >-
+      Jurisdiction-independent: the DPPA is federal and reaches every state
+      DMV record. Maracich is the reason there is no attorney carve-out to
+      argue about.
+
+  - id: SRC_TX_CR3_REDACTED
+    reason_code: TX_REDACTED_NO_CONTACT_PII
+    legal_basis: >-
+      Tex. Transp. Code 550.065(c-1) (the bulk-accessible product is the
+      redacted CR-3) and 550.065(f) (redaction strips name, driver's licence
+      number, date of birth other than year, address other than ZIP,
+      telephone number, plate number and insurer details).
+    when:
+      jurisdiction: [TX]
+      identity_provenance: [PUBLIC_CRASH_REPORT, MOTOR_VEHICLE_RECORD]
+    params: {}
+    effective_from: 2019-09-01
+    effective_to: null
+    notes: >-
+      This is not a policy choice, it is arithmetic: the fields a contact
+      pipeline needs are the exact fields 550.065(f) removes. The honest
+      statement for the memo is that the Texas public feed CANNOT produce a
+      callable record, so the count is zero before any other gate runs.
+
+  - id: SRC_MD_GP_4_320
+    reason_code: MD_MVA_TELEPHONE_SOLICITATION_BAR
+    legal_basis: >-
+      Md. Code Gen. Prov. 4-320 (Public Information Act, required denials --
+      Motor Vehicle Administration): the custodian may not disclose personal
+      information without the written consent of the person in interest, such
+      information may be used only for a purpose approved by the MVA, and it
+      may not be disclosed "for use in telephone solicitations".
+    when:
+      jurisdiction: [MD]
+      identity_provenance: [PUBLIC_CRASH_REPORT, MOTOR_VEHICLE_RECORD]
+      contact_kind: [LIVE_TELEPHONE, RECORDED_TELEPHONE, TEXT_MESSAGE]
+    params: {}
+    effective_from: 2014-10-01
+    effective_to: null
+    notes: >-
+      THE JUDGMENT CALL, argued in full in COMPLIANCE.md. 4-320 sits in the
+      Public Information Act and binds the MVA CUSTODIAN'S DISCLOSURE; the
+      Montgomery County feed is a police crash report released under a
+      different provision, and reading 4-320 onto it is a step. It is taken
+      here, for two reasons: Maryland has stated a public policy that
+      motor-vehicle personal information is not to be used for telephone
+      solicitation, and the county's own person table ships titled
+      "(Anonymized)" because the same policy reaches it. The REJECTED reading
+      -- that 4-320 binds only the MVA and a police report is outside it -- is
+      recorded in COMPLIANCE.md and would still leave the record barred by
+      LS_MD below whenever the actor is a lawyer or a lawyer's agent.
+      Scoped to telephone and text contact kinds, because that is what the
+      statute names; a written mailing is NOT reached by this rule.
+
+  - id: SRC_FL_316_066
+    reason_code: FL_CRASH_REPORT_CONFIDENTIAL
+    legal_basis: >-
+      Fla. Stat. 316.066(2)(a) (a crash report revealing the identity of a
+      party is confidential and exempt from public disclosure for 60 days, and
+      is released inside that window only to enumerated persons who file a
+      written sworn statement of entitlement) and 316.066(3)(d) (knowing
+      misuse of information obtained under that regime is a third-degree
+      felony).
+    when:
+      jurisdiction: [FL]
+      identity_provenance: [PUBLIC_CRASH_REPORT, MOTOR_VEHICLE_RECORD]
+    params: {}
+    effective_from: 2012-01-01
+    effective_to: null
+    notes: >-
+      Distinct from the 60-day TIME window in blackout_windows.csv, and both
+      apply. The time window says "not yet"; this rule says a cold-contact
+      pipeline cannot make the sworn statement 316.066(2) requires in order to
+      obtain the identifying report at all, and 316.066(3)(d) attaches a
+      felony to getting that wrong. Only the time window can lapse.
+
+  - id: SRC_SYNTHETIC_FIXTURE_NO_CONSENT
+    reason_code: DPPA_NO_PERMISSIBLE_USE
+    legal_basis: >-
+      18 U.S.C. 2721(b); Maracich v. Spears, 570 U.S. 48 (2013). No
+      permissible use can be stated for an identity record whose subject did
+      not supply it.
+    when:
+      identity_provenance: [SYNTHETIC_FIXTURE]
+    unless:
+      consent_valid: [true]
+    params: {}
+    effective_from: 1994-09-13
+    effective_to: null
+    notes: >-
+      THE FIXTURE ASSUMPTION, and the memo must repeat it.
+      fixtures/synthetic_parties.csv supplies an identity layer that the three
+      real sources deliberately do not. The ruleset treats those rows as
+      CONSUMER_DIRECT where a valid, unrevoked consent record exists, and as
+      having NO PERMISSIBLE USE otherwise. NO SUCH IDENTITY JOIN EXISTS IN
+      PRODUCTION: the production sources are redacted or anonymised by
+      statute, so on production data every record fails a source gate and the
+      engine's honest output for MD/TX/FL cold contact is zero. See the
+      crash_only_decisions table for that count.
+
+# ===========================================================================
+# LIVE SOLICITATION -- ABA Model Rule 7.3(b) and its state analogues
+# ===========================================================================
+# The `actor` is config (config/compliance.toml). The product as described is
+# accident leads for a contact centre acting for personal-injury lawyers, so
+# the default actor is ATTORNEY_OR_AGENT and these rules bind the caller.
+# COMPLIANCE.md states what changes if the principal is not a lawyer.
+live_solicitation:
+
+  - id: LS_MD
+    reason_code: LIVE_SOLICITATION_PROHIBITED
+    legal_basis: >-
+      Md. Rule 19-307.3(b) (a lawyer shall not solicit professional employment
+      by live person-to-person contact); ABA Model Rule 7.3 cmt. [2], which
+      defines live person-to-person contact to include live telephone.
+    when:
+      jurisdiction: [MD]
+      actor: [ATTORNEY_OR_AGENT]
+      contact_kind: [LIVE_TELEPHONE, IN_PERSON, REAL_TIME_ELECTRONIC]
+    unless:
+      consent_valid: [true]
+    params: {}
+    effective_from: 2019-07-01
+    effective_to: null
+    notes: >-
+      Lifted only by a valid, unrevoked consumer-direct consent -- the
+      Rule 7.3(b)(2)-style exception for a person who has initiated contact
+      with the lawyer. That is an ASSUMPTION about what the fixture's
+      `consent_on_file` represents and it is flagged as one in COMPLIANCE.md:
+      a consent to be contacted by a lead buyer is not automatically a
+      consumer-initiated approach to the specific lawyer.
+
+  - id: LS_FL
+    reason_code: LIVE_SOLICITATION_PROHIBITED
+    legal_basis: >-
+      R. Reg. Fla. Bar 4-7.18(a) (a lawyer shall not solicit professional
+      employment in person, by telephone or by real-time electronic contact);
+      ABA Model Rule 7.3(b).
+    when:
+      jurisdiction: [FL]
+      actor: [ATTORNEY_OR_AGENT]
+      contact_kind: [LIVE_TELEPHONE, IN_PERSON, REAL_TIME_ELECTRONIC]
+    unless:
+      consent_valid: [true]
+    params: {}
+    effective_from: 2013-05-01
+    effective_to: null
+    notes: >-
+      4-7.18(a)(1) excepts a prospective client who has initiated contact with
+      the lawyer, which is the exception `consent_valid` stands in for.
+
+  - id: LS_TX
+    reason_code: LIVE_SOLICITATION_PROHIBITED
+    legal_basis: >-
+      Tex. Disciplinary R. Prof. Conduct 7.03(a); Tex. Penal Code 38.12(a)(2),
+      which criminalises in-person or telephone solicitation of employment for
+      economic benefit as barratry, a THIRD-DEGREE FELONY that reaches the
+      caller and not only the firm.
+    when:
+      jurisdiction: [TX]
+      actor: [ATTORNEY_OR_AGENT]
+      contact_kind: [LIVE_TELEPHONE, IN_PERSON, REAL_TIME_ELECTRONIC]
+    unless:
+      consent_valid: [true]
+    params: {}
+    effective_from: 2019-06-01
+    effective_to: null
+    notes: >-
+      The only rule in this file whose violation is a felony exposure for the
+      individual agent placing the call. It is why the Texas answer in the
+      memo is not a close question.
+
+  - id: LS_DEFAULT
+    reason_code: LIVE_SOLICITATION_PROHIBITED
+    legal_basis: >-
+      ABA Model Rule 7.3(b) and the adopting state analogue. Applied where no
+      jurisdiction-specific rule row exists, so a new state fails closed.
+    when:
+      actor: [ATTORNEY_OR_AGENT]
+      contact_kind: [LIVE_TELEPHONE, IN_PERSON, REAL_TIME_ELECTRONIC]
+    unless:
+      jurisdiction: [MD, FL, TX]
+    params: {}
+    effective_from: 2018-08-01
+    effective_to: null
+    notes: >-
+      Deliberately a catch-all. Adding Ohio to blackout_windows.csv without
+      adding an Ohio bar rule must not make Ohio MORE permissive than
+      Maryland; this row is what stops that.
+
+# ===========================================================================
+# CHANNEL GATES -- ASSIGNMENT.md 5c
+# ===========================================================================
+channel_gates:
+
+  # -- national Do Not Call ------------------------------------------------
+  dnc:
+    - id: CH_DNC_LISTED
+      reason_code: DNC_LISTED
+      legal_basis: >-
+        16 C.F.R. 310.4(b)(1)(iii)(B) (TSR); 47 C.F.R. 64.1200(c)(2) (TCPA).
+      when:
+        on_national_dnc: [true]
+      params: {}
+      effective_from: 2003-10-01
+      effective_to: null
+      notes: null
+
+    - id: CH_DNC_SCRUB_STALE
+      reason_code: DNC_SCRUB_STALE
+      legal_basis: >-
+        16 C.F.R. 310.4(b)(3)(iv): the safe harbour requires a registry
+        version obtained no more than 31 days before the call.
+      when: {}
+      params:
+        max_age_days: 31
+        missing_is_stale: true
+      effective_from: 2003-10-01
+      effective_to: null
+      notes: >-
+        A FRESHNESS SLA on a join key, not a one-time load, and it fires
+        EVEN WHEN THE NUMBER IS NOT LISTED: the safe harbour is what the
+        31 days buys, and an aged scrub loses it whatever the last answer
+        was. `missing_is_stale` makes an absent scrub date an automatic
+        hold rather than an implicit pass. Fixture row P016 is the live
+        case at 45 days.
+
+  # -- internal, company-specific Do Not Call --------------------------------
+  internal_dnc:
+    - id: CH_INTERNAL_DNC
+      reason_code: INTERNAL_DNC
+      legal_basis: >-
+        47 C.F.R. 64.1200(d)(3) (a company-specific do-not-call request must
+        be honoured) and 64.1200(d)(6) (records retained for 5 years).
+      when: {}
+      params:
+        honour_within_days: 30
+        retain_years: 5
+      effective_from: 2003-10-01
+      effective_to: null
+      notes: >-
+        The table is append-only and starts EMPTY -- there is no source of
+        internal suppressions in this exercise, and seeding it with invented
+        rows would make the gate untestable. tests/test_compliance.py adds a
+        token and proves the gate fires.
+
+  # -- established business relationship --------------------------------------
+  ebr:
+    - id: CH_EBR_TRANSACTION
+      reason_code: ELIGIBLE_EBR
+      legal_basis: >-
+        16 C.F.R. 310.2(o); 47 C.F.R. 64.1200(f)(5): an EBR arises from a
+        purchase or transaction within the eighteen months preceding the call.
+      when: {}
+      params:
+        kind: TRANSACTION
+        months: 18
+      effective_from: 2003-10-01
+      effective_to: null
+      notes: >-
+        The fixture carries no transactions, so ELIGIBLE_EBR never fires on
+        the 40 rows. The gate exists and is unit-tested, because an EBR is
+        the second of only two affirmative bases this engine can produce and
+        an untested affirmative path is where an unlawful call comes from.
+
+    - id: CH_EBR_INQUIRY
+      reason_code: ELIGIBLE_EBR
+      legal_basis: >-
+        16 C.F.R. 310.2(o); 47 C.F.R. 64.1200(f)(5): three months from a
+        consumer's inquiry or application.
+      when: {}
+      params:
+        kind: INQUIRY
+        months: 3
+      effective_from: 2003-10-01
+      effective_to: null
+      notes: null
+
+  # -- Reassigned Numbers Database -------------------------------------------
+  # THREE recorded states, three different outcomes, plus a fourth for "we
+  # never asked". ASSIGNMENT.md 5c: "A 'No Data' response is not a green light
+  # -- this is the single most common engineering misreading of the RND."
+  rnd:
+    - id: CH_RND_REASSIGNED
+      reason_code: RND_REASSIGNED
+      legal_basis: >-
+        47 C.F.R. 64.1200(m). A "Yes" is affirmative evidence the number was
+        permanently disconnected after the consent date; the consent no longer
+        reaches the person now holding it.
+      when:
+        rnd_response: [YES]
+      params: {}
+      effective_from: 2021-11-15
+      effective_to: null
+      notes: null
+
+    - id: CH_RND_NO_DATA
+      reason_code: RND_NO_DATA_NO_SAFE_HARBOR
+      legal_basis: >-
+        47 C.F.R. 64.1200(m)(1). The safe harbour attaches ONLY to a "No"
+        response. "No Data" means the database could not answer, which
+        withholds the safe harbour rather than granting it.
+      when:
+        rnd_response: [NO_DATA]
+      params: {}
+      effective_from: 2021-11-15
+      effective_to: null
+      notes: >-
+        Fixture row P013. Curable by a later query once the database has the
+        record, so HOLD_UNTIL_REFRESH -- but there is no date to publish, so
+        the status is INELIGIBLE and not BLOCKED_UNTIL.
+
+    - id: CH_RND_UNRESOLVED
+      reason_code: RND_RESPONSE_UNRESOLVED
+      legal_basis: >-
+        47 C.F.R. 64.1200(m). No recorded response at all. The safe harbour
+        attaches only to a "No", so an absent response is not one.
+      when:
+        rnd_response: [null]
+      params: {}
+      effective_from: 2021-11-15
+      effective_to: null
+      notes: >-
+        The fourth state. Kept distinct from NO_DATA because they are
+        different facts -- one is the database's answer, the other is that
+        nobody asked -- and collapsing them would hide a broken integration.
+
+  # -- line type routing table ------------------------------------------------
+  # ASSIGNMENT.md 5c: "Route voip and unknown to the most restrictive
+  # treatment, never the most permissive." The table is data so the routing
+  # can be asserted directly by a test rather than inferred from an outcome.
+  line_type_routing:
+    most_restrictive_tier: TCPA_227B_STRICT
+    effective_from: 1991-12-20
+    effective_to: null
+    rows:
+      - line_type: wireless
+        tier: TCPA_227B_STRICT
+        requires_prior_express_consent: true
+        written_consent_required_for_autodial: true
+        manual_dial_permitted: true
+        reason_code: null
+        legal_basis: >-
+          47 U.S.C. 227(b)(1)(A)(iii) attaches strict liability to autodialled
+          and prerecorded calls to a wireless number; 47 C.F.R.
+          64.1200(a)(1)-(2). Facebook v. Duguid, 592 U.S. 395 (2021), narrows
+          what counts as an autodialer but not the consent requirement for
+          prerecorded calls.
+      - line_type: landline
+        tier: TCPA_227C_DNC
+        requires_prior_express_consent: false
+        written_consent_required_for_autodial: false
+        manual_dial_permitted: true
+        reason_code: null
+        legal_basis: >-
+          47 U.S.C. 227(c); 47 C.F.R. 64.1200(c)-(d). The DNC regime, which
+          requires more than one call in twelve months to be actionable.
+      - line_type: voip
+        tier: TCPA_227B_STRICT
+        requires_prior_express_consent: true
+        written_consent_required_for_autodial: true
+        manual_dial_permitted: true
+        reason_code: LINE_TYPE_VOIP_RESTRICTED
+        legal_basis: >-
+          47 U.S.C. 227(b)(1)(A)(iii); 47 C.F.R. 64.1200(a)(1). A VoIP number
+          may terminate on a wireless handset and may be charged for the call,
+          so it is routed to the wireless tier plus the consent requirement.
+      - line_type: unknown
+        tier: TCPA_227B_STRICT
+        requires_prior_express_consent: true
+        written_consent_required_for_autodial: true
+        manual_dial_permitted: true
+        reason_code: LINE_TYPE_UNRESOLVED
+        legal_basis: >-
+          47 U.S.C. 227(b)(1)(A)(iii). An unresolved line type cannot be shown
+          to be a landline, so it takes the wireless treatment; and because
+          the routing decision itself rests on unknown carrier data it is also
+          a refresh hold.
+      - line_type: null
+        tier: TCPA_227B_STRICT
+        requires_prior_express_consent: true
+        written_consent_required_for_autodial: true
+        manual_dial_permitted: true
+        reason_code: LINE_TYPE_UNRESOLVED
+        legal_basis: >-
+          47 U.S.C. 227(b)(1)(A)(iii). No line type recorded at all is treated
+          exactly as `unknown`: the absence of a value is not evidence of a
+          landline.
+
+  line_type_freshness:
+    - id: CH_LINE_TYPE_STALE
+      reason_code: LINE_TYPE_STALE
+      legal_basis: >-
+        16 C.F.R. 310.4(b)(3)(iv) by analogy, and ASSIGNMENT.md 5c: "Line
+        type, carrier and disconnect status all mutate -- pair the refresh
+        with the 31-day DNC cadence."
+      when:
+        line_type_asof: ["*"]
+      params:
+        max_age_days: 31
+      effective_from: 2003-10-01
+      effective_to: null
+      notes: >-
+        Fires ONLY where `line_type_asof` is present. The fixture does not
+        carry one, and deriving it from `dnc_scrub_age_days` would MANUFACTURE
+        a freshness fact the fixture never asserted -- which is precisely the
+        move that turns a compliance control back into a filter. The absence
+        is counted in _compliance_manifest.json
+        (`stats.fixture.line_type_asof_missing`) and named in COMPLIANCE.md
+        rather than papered over.
+
+  # -- calling window ---------------------------------------------------------
+  # Derived from GEOGRAPHY. src/compliance/window.py takes the zone from the
+  # party's coordinate (src/geo/tz.py), takes the NPA zone SET from
+  # config/npa_timezone.csv as a fallback second opinion, INTERSECTS them when
+  # they disagree, and then applies the stricter of the federal and state
+  # hours. `basis` on every emitted window states the whole derivation.
+  calling_window:
+    federal:
+      id: CW_FEDERAL
+      earliest: "08:00"
+      latest: "21:00"
+      legal_basis: >-
+        16 C.F.R. 310.4(c) and 47 C.F.R. 64.1200(c)(1): no outbound telephone
+        call before 8:00 a.m. or after 9:00 p.m. LOCAL TIME AT THE CALLED
+        PARTY'S LOCATION.
+      effective_from: 2003-10-01
+      effective_to: null
+    states:
+      - id: CW_FL
+        jurisdiction: FL
+        earliest: "08:00"
+        latest: "20:00"
+        legal_basis: "Fla. Stat. 501.616(6)."
+        effective_from: 2001-07-01
+        effective_to: null
+        notes: Oklahoma and Washington are the same shape and are not in scope.
+      - id: CW_MD
+        jurisdiction: MD
+        earliest: "08:00"
+        latest: "20:00"
+        legal_basis: >-
+          Md. Code Com. Law 14-4502(c)(1) (Stop the Spam Calls Act of 2023,
+          2023 Md. Laws chs. 413/414): a person may not make a telephone
+          solicitation "to a called party during the hours between 8 p.m. and
+          8 a.m. in the called party's time zone".
+        effective_from: 2024-01-01
+        effective_to: null
+        notes: >-
+          Verified against the statute text. Note the statute is keyed to the
+          CALLED PARTY'S time zone, which is the same rule the federal window
+          uses and the reason this pipeline derives the zone from a
+          coordinate rather than from a state.
+      - id: CW_TX
+        jurisdiction: TX
+        earliest: "09:00"
+        latest: "21:00"
+        legal_basis: >-
+          Tex. Bus. & Com. Code 301.051: a telephone solicitor may make a call
+          only after 9 a.m. and before 9 p.m. on a weekday or Saturday, or
+          after 12 noon and before 9 p.m. on a Sunday.
+        day_overrides:
+          - days: [SUNDAY]
+            earliest: "12:00"
+            latest: "21:00"
+        effective_from: 2005-09-01
+        effective_to: null
+        notes: >-
+          MEASURED AGAINST THE STATUTE, not against a practitioner summary:
+          several secondary sources attribute this curfew to
+          Tex. Bus. & Com. Code 302.101, which is in fact the registration-
+          certificate requirement. Texas is an hour STRICTER than the federal
+          window at the start of the day, which no pipeline defaulting to
+          8:00 a.m. would ever discover.
+
+  outside_calling_window:
+    - id: CH_OUTSIDE_CALLING_WINDOW
+      reason_code: OUTSIDE_CALLING_WINDOW
+      legal_basis: >-
+        16 C.F.R. 310.4(c); 47 C.F.R. 64.1200(c)(1); and the stricter state
+        rule where one applies.
+      when:
+        dial_at_local: ["*"]
+      params: {}
+      effective_from: 2003-10-01
+      effective_to: null
+      notes: >-
+        Fires only when a `dial_at_local` is supplied. The fixture has no dial
+        time -- a lead file is produced hours before anyone picks up a
+        handset -- so on the 40 rows the engine EMITS THE WINDOW rather than
+        judging a call against it. The gate is exercised by a test at 21:30
+        local, which is the moment it would matter.
+
+# ===========================================================================
+# CONSENT -- ASSIGNMENT.md 5c, 5d
+# ===========================================================================
+consent:
+  required_provenance_fields:
+    - text_presented
+    - disclosure_hash
+    - disclosure_url
+    - obtained_at
+    - obtained_at_timezone
+    - ip_address
+    - user_agent
+    - signature_event
+    - sellers_named
+    - source_chain
+  required_fields_legal_basis: >-
+    ASSIGNMENT.md 5c; 47 C.F.R. 64.1200(f)(9) (prior express written consent
+    means a signed written agreement disclosing the specific seller). The
+    burden of proving consent is on the CALLER, so a consent record missing
+    any of these is functionally no consent.
+  retention_years: 5
+  retention_legal_basis: >-
+    47 U.S.C. 227 claims carry a four-year federal limitations period
+    (28 U.S.C. 1658); five years aligns with 47 C.F.R. 64.1200(d)(6) and the
+    DPPA's 18 U.S.C. 2721(c) redisclosure record.
+
+  rules:
+    - id: CONSENT_REVOKED_RULE
+      reason_code: CONSENT_REVOKED
+      legal_basis: >-
+        47 C.F.R. 64.1200(a)(10): a revocation must be honoured within a
+        reasonable time not to exceed ten business days.
+      when:
+        consent_revoked: [true]
+      params: {}
+      effective_from: 2024-04-11
+      effective_to: null
+      notes: >-
+        Trumps a consent on file. Fixture rows P003 and P018 carry both flags
+        and both resolve to CONSENT_REVOKED with no ELIGIBLE_CONSENTED.
+
+    - id: CONSENT_ABSENT_RULE
+      reason_code: CONSENT_ABSENT
+      legal_basis: >-
+        47 U.S.C. 227(b)(1)(A)(iii) and 47 C.F.R. 64.1200(a)(1)-(2) for the
+        wireless tier; 16 C.F.R. 310.4(b)(1)(iii)(B) for a listed number. No
+        consent record, no affirmative basis.
+      when:
+        consent_on_file: [false, null]
+      params: {}
+      effective_from: 1992-12-20
+      effective_to: null
+      notes: Fixture rows P002, P017, P025. Also every crash-only record.
+
+    - id: CONSENT_UNVERIFIABLE_RULE
+      reason_code: CONSENT_UNVERIFIABLE
+      legal_basis: >-
+        47 C.F.R. 64.1200(f)(9); the burden of proving consent is on the
+        caller, so an incomplete provenance record is unverifiable consent and
+        unverifiable consent is functionally no consent.
+      when:
+        consent_provenance_complete: [false]
+        consent_on_file: [true]
+      params: {}
+      effective_from: 2013-10-16
+      effective_to: null
+      notes: >-
+        Checked field by field against `required_provenance_fields` above, so
+        adding a required field is a row here and not a code change.
+
+    - id: CONSENT_WRITTEN_REQUIRED_NATIONAL
+      reason_code: CONSENT_FORM_NOT_WRITTEN
+      legal_basis: >-
+        47 C.F.R. 64.1200(a)(2): prior express WRITTEN consent for
+        autodialled or prerecorded telemarketing to a wireless number.
+      when:
+        consent_on_file: [true]
+        line_type_requires_written_consent: [true]
+      params:
+        accepted_consent_form: [WRITTEN]
+      scope: national
+      effective_from: 2013-10-16
+      effective_to: 2026-02-24
+      notes: >-
+        ASSIGNMENT.md 5d(2), first half. Closed on 2026-02-24, the day before
+        Bradford, and REPLACED by the row below rather than edited -- so a
+        decision made in 2025 still replays against the rule that produced it.
+
+    - id: CONSENT_WRITTEN_REQUIRED_EX_5TH
+      reason_code: CONSENT_FORM_NOT_WRITTEN
+      legal_basis: >-
+        47 C.F.R. 64.1200(a)(2), as limited by Bradford v. Sovereign Pest
+        Control (5th Cir., 25 Feb 2026), which held that 47 U.S.C. 227(b)
+        requires only prior express consent, which may be oral, and declined
+        to apply the written requirement. The rule was NOT vacated and binds
+        everywhere outside the Fifth Circuit.
+      when:
+        consent_on_file: [true]
+        line_type_requires_written_consent: [true]
+      params:
+        accepted_consent_form: [WRITTEN]
+      scope: circuit
+      excluded_circuits: ["5th"]
+      effective_from: 2026-02-25
+      effective_to: null
+      notes: >-
+        ASSIGNMENT.md 5d(2), second half, and the whole point of the design:
+        a circuit split absorbed by two data rows and an `excluded_circuits`
+        list. Texas is the 5th Circuit, so a Texas record with ORAL consent
+        passes this gate at as_of 2026-09-01 and FAILS it at as_of 2026-02-01.
+        Practitioner guidance is uniformly to keep obtaining written consent,
+        which is why the synthetic fixture provenance is marked WRITTEN and
+        why this row is a carve-out rather than a repeal.
+
+    - id: CONSENT_ONE_TO_ONE
+      reason_code: CONSENT_NOT_ONE_TO_ONE
+      legal_basis: >-
+        Former 47 C.F.R. 64.1200(f)(9) one-to-one consent order (2023),
+        VACATED by Insurance Marketing Coalition v. FCC, 127 F.4th 303
+        (11th Cir., 24 Jan 2025) and repealed by final rule in September 2025.
+      when:
+        consent_on_file: [true]
+      params:
+        max_sellers_named: 1
+      status: VACATED
+      contractual: true
+      effective_from: 2025-01-27
+      effective_to: 2025-01-24
+      notes: >-
+        ASSIGNMENT.md 5d(1). `effective_from` is AFTER `effective_to`, so this
+        rule is never in force at any `as_of` and the engine never applies it.
+        It is present rather than deleted for two reasons: many lead buyers
+        still require one-to-one consent CONTRACTUALLY (`contractual: true`),
+        so a per-buyer ruleset can switch it on by changing two dates; and
+        deleting a vacated rule destroys the record that we considered it.
+        tests/test_compliance.py asserts it never fires at any as_of.
+
+  affirmative:
+    - id: AFFIRM_CONSENTED
+      reason_code: ELIGIBLE_CONSENTED
+      legal_basis: >-
+        47 U.S.C. 227(b)(1)(A) and 47 C.F.R. 64.1200(a)(1)-(2) (prior express
+        consent, written where 64.1200(a)(2) applies); 16 C.F.R.
+        310.4(b)(1)(iii)(B)(i) (express agreement exception to the national
+        registry).
+      when:
+        consent_valid: [true]
+      params: {}
+      effective_from: 1992-12-20
+      effective_to: null
+      notes: >-
+        One of exactly two affirmative bases. On the fixture it is the only
+        one that can fire, because no fixture row has an EBR.
+
+  revocation:
+    honour_business_days: 10
+    scopes: [SELLER, ALL]
+    revoke_all_compliance_date: 2027-01-31
+    retention_years: 5
+    legal_basis: >-
+      47 C.F.R. 64.1200(a)(10) (honoured within a reasonable time not to
+      exceed ten business days); FCC DA 26-12 (the "revoke-all" scope
+      provision, twice waived, current compliance date 31 January 2027).
+    notes: >-
+      The revocations table is append-only and immutable, and `scope = ALL`
+      is honoured NOW rather than on the compliance date. Building for it now
+      is cheap; retrofitting a cascade across every seller's campaign after
+      the fact is not. The 2027-01-31 date is effective-dated DATA here so
+      that when it arrives nothing has to change.
+
+# ===========================================================================
+# DATA QUALITY -- Phase 4's measured defects, promoted to eligibility gates
+# ===========================================================================
+data_quality:
+
+  - id: DQ_COORDINATE_OUT_OF_ENVELOPE
+    reason_code: COORDINATE_OUT_OF_ENVELOPE
+    legal_basis: >-
+      16 C.F.R. 310.4(c) keys the calling window to the called party's
+      LOCATION. A coordinate outside the jurisdiction envelope declared in
+      config/geo.toml is not evidence of that location, so no window derived
+      from it can be defended.
+    when:
+      envelope_status: [OUT_OF_ENVELOPE]
+    params: {}
+    effective_from: 2003-10-01
+    effective_to: null
+    notes: >-
+      Fixture row P019 (Cumberland, ~100 km outside the Montgomery envelope).
+      Phase 4's quarantine-not-drop decision carries over: the row is kept,
+      dispositioned and counted, never silently discarded.
+
+  - id: DQ_GEOCODE_TIER_INSUFFICIENT
+    reason_code: GEOCODE_TIER_INSUFFICIENT
+    legal_basis: >-
+      16 C.F.R. 310.4(c); 47 C.F.R. 64.1200(c)(1). A zone taken from a county
+      or from a state default is a guess about the called party's location,
+      and Texas and Florida each span two zones.
+    when:
+      tz_source: [COUNTY_FALLBACK, JURISDICTION_DEFAULT, UNRESOLVED]
+    params: {}
+    effective_from: 2003-10-01
+    effective_to: null
+    notes: >-
+      This is the code src/geo/tz.py's docstring promised Phase 6 would emit
+      for every non-COORDINATE `tz_source`. It is a statement about the
+      COORDINATE'S PROVENANCE, and it is deliberately NOT the same code as
+      SNAP_DISTANCE_EXCEEDED -- see that rule.
+
+  - id: DQ_SNAP_DISTANCE_EXCEEDED
+    reason_code: SNAP_DISTANCE_EXCEEDED
+    legal_basis: >-
+      No statute. A data-quality bar under the assignment's own default: a
+      record whose location cannot be tied to the road network it claims to
+      be on has an unverified location, and Part 5's default disposition is
+      INELIGIBLE.
+    when:
+      snap_status: [REJECTED_DISTANCE]
+    params: {}
+    effective_from: 2026-09-01
+    effective_to: null
+    notes: >-
+      Fixture row P020 ("nearest road is ~400 m away"), against the 50 m
+      threshold config/geo.toml [snap] max_distance_m measured in Phase 4.
+      GEOCODE_TIER_INSUFFICIENT does NOT also fire on this row, and the
+      distinction is deliberate: the snap distance is a statement about the
+      ROAD NETWORK (no mapped carriageway within 50 m), while the geocode
+      tier is a statement about where the COORDINATE CAME FROM. P020's
+      coordinate is a real point that resolves a timezone from the polygon
+      set, so the calling window it produces is sound; what is unsound is any
+      road-level attribute. Two different failures, two different codes.
+      Collapsing them would make the exclusion table unreadable -- the memo
+      could no longer distinguish "we geocoded to a centroid" from "this
+      address is 400 m from the nearest road", and those need different fixes.
+      Statuses NOT_ATTEMPTED, NOT_IN_SCOPE, NO_GEOMETRY and UNAVAILABLE are
+      NOT failures: an enrichment that was never in scope for a jurisdiction
+      must not turn into a reason code.
+
+  - id: DQ_TIMEZONE_UNRESOLVED
+    reason_code: TIMEZONE_UNRESOLVED
+    legal_basis: >-
+      16 C.F.R. 310.4(c); 47 C.F.R. 64.1200(c)(1). With no zone there is no
+      local time, and with no local time there is no permitted window.
+    when:
+      tz_iana: [null]
+    params: {}
+    effective_from: 2003-10-01
+    effective_to: null
+    notes: null
+
+# ===========================================================================
+# RETENTION -- ASSIGNMENT.md 5e
+# ===========================================================================
+# Read by src/compliance/retention.py, which REPORTS what would be deleted at
+# `as_of` and does not delete. Deletion that actually propagates to backups
+# and to derived tables is an operational control with a rollback story, not a
+# function call, and claiming it here would be the quiet failure the
+# assignment names.
+retention:
+  consent_provenance:
+    years: 5
+    legal_basis: >-
+      Four-year TCPA limitations period (28 U.S.C. 1658); five years aligns
+      with 47 C.F.R. 64.1200(d)(6) and 18 U.S.C. 2721(c).
+  revocations:
+    years: 5
+    legal_basis: 47 C.F.R. 64.1200(a)(10), (d)(6).
+  internal_dnc:
+    years: 5
+    legal_basis: 47 C.F.R. 64.1200(d)(6).
+  decision_lineage:
+    years: 7
+    legal_basis: >-
+      No single statute sets it. Seven years is the max of the five-year TSR
+      and DPPA records and the four-year TCPA limitations period, plus margin
+      for a claim filed at the end of the period and litigated. Stated as a
+      choice, not as a requirement.
+  vault_access_log:
+    years: 5
+    legal_basis: >-
+      18 U.S.C. 2721(c): a five-year redisclosure record naming each recipient
+      and the permitted purpose.
+  vault_parties:
+    years: 5
+    anchor: LAST_LAWFUL_CONTACT
+    legal_basis: >-
+      No statute compels retention of the identity itself. Five years from the
+      last LAWFUL contact bounds it to the period in which a claim about that
+      contact can still be brought; a record never lawfully contacted has no
+      anchor and is reported for deletion at ingest age.
+
+# ===========================================================================
+# FL STRUCTURAL INCOMPLETENESS -- ASSIGNMENT.md 5a, second-order effect
+# ===========================================================================
+# A MONITORING design, not a lead gate. Its label is in
+# reason_codes.MonitoringLabel and never enters `reason_codes` on a decision.
+monitoring:
+  fl_structural_incompleteness:
+    id: MON_FL_60D
+    label: FL_STRUCTURALLY_INCOMPLETE_WINDOW
+    jurisdiction: FL
+    trailing_days: 60
+    legal_basis: >-
+      Fla. Stat. 316.066(2). Crash reports revealing the identity of a party
+      are exempt from public disclosure for 60 days, so the most recent 60
+      days of ANY Florida public feed is structurally incomplete.
+    effective_from: 2012-01-01
+    effective_to: null
+    notes: >-
+      "If you compute a trailing-30-day Florida trend, you will read a statute
+      as an outage." Any trailing aggregate whose window overlaps the trailing
+      60 days is REFUSED, or annotated when the caller asks for an annotation.
