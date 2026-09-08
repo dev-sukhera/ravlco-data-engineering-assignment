@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crash-to-contact/contracts/scoring.schema.json",
+  "title": "Scoring backtest contract v1.0.0",
+  "tables": {
+    "scoring.backtest_metrics": {
+      "type": "object", "additionalProperties": false, "x-column-order-is-contract": true,
+      "required": ["holdout", "train_year_max", "strategy", "blocking_key", "jurisdiction", "records", "severe_records", "prevalence", "precision_at_top", "lift_over_random", "vru_precision_at_top", "lift_over_vru"],
+      "properties": {
+        "holdout": {"type": "string"}, "train_year_max": {"type": "integer"},
+        "strategy": {"type": "string", "enum": ["blocked_county", "blocked_h3_r7", "random_control"]},
+        "blocking_key": {"type": "string", "enum": ["county_block", "h3_r7_block", "crash_sk"]},
+        "jurisdiction": {"type": "string"}, "records": {"type": "integer", "minimum": 1},
+        "severe_records": {"type": "integer", "minimum": 0}, "prevalence": {"type": "number", "minimum": 0, "maximum": 1},
+        "precision_at_top": {"type": "number", "minimum": 0, "maximum": 1}, "lift_over_random": {"type": ["number", "null"], "minimum": 0},
+        "vru_precision_at_top": {"type": "number", "minimum": 0, "maximum": 1}, "lift_over_vru": {"type": ["number", "null"], "minimum": 0}
+      },
+      "x-table-constraints": {"unique_keys": [["holdout", "strategy", "blocking_key", "jurisdiction"]], "row_count_min": 1,
+        "row_rules": [{"name": "training_precedes_holdout", "predicate": "train_year_max < CAST(substr(holdout, 1, 4) AS INTEGER)", "description": "No reported evaluation row is drawn from the parameter-setting period."}]}
+    },
+    "scoring.backtest_folds": {
+      "type": "object", "additionalProperties": false, "x-column-order-is-contract": true,
+      "required": ["holdout", "train_year_max", "strategy", "blocking_key", "jurisdiction", "fold", "records", "severe_records", "prevalence", "precision_at_top", "lift_over_random", "vru_precision_at_top", "lift_over_vru"],
+      "properties": {
+        "holdout": {"type": "string"}, "train_year_max": {"type": "integer"}, "strategy": {"type": "string"}, "blocking_key": {"type": "string"}, "jurisdiction": {"type": "string"},
+        "fold": {"type": "integer", "minimum": 0}, "records": {"type": "integer", "minimum": 0}, "severe_records": {"type": "integer", "minimum": 0},
+        "prevalence": {"type": ["number", "null"], "minimum": 0, "maximum": 1}, "precision_at_top": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "lift_over_random": {"type": ["number", "null"], "minimum": 0}, "vru_precision_at_top": {"type": ["number", "null"], "minimum": 0, "maximum": 1}, "lift_over_vru": {"type": ["number", "null"], "minimum": 0}
+      },
+      "x-table-constraints": {"unique_keys": [["holdout", "strategy", "blocking_key", "jurisdiction", "fold"]], "row_count_min": 1, "row_rules": []}
+    },
+    "scoring.crash_context_scores": {
+      "type": "object", "additionalProperties": false, "x-column-order-is-contract": true,
+      "required": ["crash_sk", "source_system", "jurisdiction", "crash_date", "year", "severity_ordinal", "severe", "context_score", "vru_baseline_score", "county_block", "h3_r7_block", "score_components", "_scoring_build_sha"],
+      "properties": {
+        "crash_sk": {"type": "integer"}, "source_system": {"type": "string"}, "jurisdiction": {"type": "string"}, "crash_date": {"type": "date"}, "year": {"type": "integer"},
+        "severity_ordinal": {"type": "integer", "minimum": 0, "maximum": 5}, "severe": {"type": "boolean"}, "context_score": {"type": "number", "minimum": 0}, "vru_baseline_score": {"type": "integer", "minimum": 0, "maximum": 1},
+        "county_block": {"type": ["string", "null"]}, "h3_r7_block": {"type": ["string", "null"]}, "score_components": {"type": "string"}, "_scoring_build_sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "x-table-constraints": {"unique_keys": [["crash_sk"]], "row_count_min": 1,
+        "row_rules": [{"name": "context_score_is_finite", "predicate": "isfinite(context_score) AND json_valid(score_components)", "description": "Backtest scores are finite and decomposable."}]}
+    }
+  }
+}

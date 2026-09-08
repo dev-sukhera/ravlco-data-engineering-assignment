@@ -62,6 +62,7 @@ SILVER_CONTRACT = CONTRACTS_DIR / "silver.schema.json"
 # than rebuilding the path, which is how the gold and analysis contracts
 # already reach their builds.
 COMPLIANCE_CONTRACT = CONTRACTS_DIR / "compliance.schema.json"
+SCORING_CONTRACT = CONTRACTS_DIR / "scoring.schema.json"
 LEAD_OUTPUT_CONTRACT = CONTRACTS_DIR / "lead_output.schema.json"
 
 # JSON Schema type -> the DuckDB logical types that satisfy it. Deliberately
