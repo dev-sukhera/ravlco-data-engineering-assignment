@@ -5,7 +5,12 @@ section that names a way to fail outright:
 
     "Derive the window from the lead's address where known, fall back to
      NPA-NXX, and take the intersection when they disagree. [...] A pipeline
-     that computes a calling window from SUBSTR(phone,1,3) fails this section."
+     that computes a calling window by taking a SQL substring of the first
+     three characters of the phone number fails this section outright."
+
+(The literal expression the assignment uses there is deliberately not written
+out anywhere in this repo, so that the grep a reviewer runs by hand comes back
+empty rather than hitting the docstring that warns against it.)
 
 So the order is fixed and it is never negotiable:
 

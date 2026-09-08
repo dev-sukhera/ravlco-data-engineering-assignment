@@ -1382,10 +1382,13 @@ def test_no_area_code_is_taken_by_slicing_a_phone_number():
     import re
 
     banned = re.compile(r"phone\s*\[\s*:?\s*3\s*\]|SUBSTR\s*\(\s*phone", re.IGNORECASE)
+    # No exemption for comments or docstrings, deliberately. A reviewer runs
+    # this grep by hand and it does not read prose, so even a docstring
+    # WARNING against the pattern would produce a hit and cost a moment of
+    # doubt. src/compliance/window.py paraphrases the assignment's sentence
+    # rather than quoting the literal, and says why.
     for path in _sources(REPO / "src"):
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if line.lstrip().startswith("#") or "SUBSTR(phone,1,3)" in line:
-                continue           # the docstrings that name the failure mode
             assert not banned.search(line), f"{path}:{lineno}: {line.strip()}"
 
 
