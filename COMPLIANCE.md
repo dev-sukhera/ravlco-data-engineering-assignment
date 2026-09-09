@@ -440,3 +440,13 @@ recoverable.
 Reproduce all of it with `python -m src.compliance.build --json`; the counts are in
 `_compliance_manifest.json` under `stats.fixture` and `stats.crash_only`, and the
 table is `data/gold/compliance/exclusion_by_code`.
+
+**Defined codes with zero occurrences in this run.** The taxonomy is intentionally wider
+than one fixture. `PROVENANCE_UNKNOWN` bars an identity whose acquisition cannot be stated;
+`AVIATION_45D` carries the federal aviation hold; `INTERNAL_DNC` honors a direct do-not-call
+request; `LINE_TYPE_STALE` and `TIMEZONE_UNRESOLVED` fail routing closed;
+`OUTSIDE_CALLING_WINDOW` prevents a call outside the computed local intersection; and
+`CONSENT_FORM_NOT_WRITTEN` plus `CONSENT_NOT_ONE_TO_ONE` represent the effective-dated,
+jurisdictional consent rules discussed above. Their absence from the table means zero
+matches, not missing implementation. This paragraph completes the one-to-one inventory of
+`src/compliance/reason_codes.py`; the code's citation remains the ruleset entry.
