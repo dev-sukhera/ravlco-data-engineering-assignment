@@ -34,9 +34,11 @@ pytest -q tests/test_compliance.py::test_ohio_45_day_window_blocks_with_no_file_
 python -c 'import csv,json; r=next(x for x in csv.DictReader(open("output/sample_leads.csv")) if x["lead_id"]=="LD_e0a4d69fad770249"); print(json.dumps({k:(json.loads(r[k]) if k in {"reason_codes","legal_basis"} else r[k]) for k in ("source_system","source_record_id","eligibility_status","reason_codes","legal_basis","decision_lineage_id")},indent=2))'
 ```
 
-Expected test result is **456 passed, 4 xfailed**. The four bronze assertions are marked
-`xfail(strict=True)` because the committed extracts deliberately retain the known defects;
-their silver twins pass. The fixture-only build reports 40 decisions. Without the optional
+Expected clean-clone result is **384 passed, 72 skipped, 4 xfailed**; the skips are tests
+that require the ignored full `data/` corpus. With that corpus present the suite is **456
+passed, 4 xfailed**. The four bronze assertions are marked `xfail(strict=True)` because the
+committed extracts deliberately retain known defects; their silver twins pass. The
+fixture-only build reports 40 decisions. Without the optional
 OSM extract it records snapping as unavailable, so five snap-dependent golden comparisons
 are not asserted; the committed full fixture run is 21 eligible, 4 blocked, 15 ineligible.
 The one-record command prints no name, address, telephone number, or coordinate.
