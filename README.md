@@ -31,7 +31,7 @@ python -m src.compliance.build \
 pytest -q tests/test_compliance.py::test_ohio_45_day_window_blocks_with_no_file_under_src_changed
 
 # Walk one synthetic decision already committed: status, codes, citations and lineage.
-python -c 'import csv,json; r=next(x for x in csv.DictReader(open("output/sample_leads.csv")) if x["source_record_id"]=="P014"); print(json.dumps({k:(json.loads(r[k]) if k in {"reason_codes","legal_basis"} else r[k]) for k in ("source_system","source_record_id","eligibility_status","reason_codes","legal_basis","decision_lineage_id")},indent=2))'
+python -c 'import csv,json; r=next(x for x in csv.DictReader(open("output/sample_leads.csv")) if x["lead_id"]=="LD_e0a4d69fad770249"); print(json.dumps({k:(json.loads(r[k]) if k in {"reason_codes","legal_basis"} else r[k]) for k in ("source_system","source_record_id","eligibility_status","reason_codes","legal_basis","decision_lineage_id")},indent=2))'
 ```
 
 Expected test result is **456 passed, 4 xfailed**. The four bronze assertions are marked
